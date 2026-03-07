@@ -1635,19 +1635,48 @@ function TOBoardPanel({ game, onUpdate, onToast }) {
                     <div style={{fontSize:12,color:"var(--text-dim)",minWidth:60}}>
                       {res.scoreA}–{res.scoreB}
                     </div>
-                    <div style={{fontSize:11,color:"var(--text-dim)",minWidth:32}}>
+                    <div style={{fontSize:11,color:"var(--text-dim)",minWidth:52}}>
                       …{res.scoreA%10}+…{res.scoreB%10}={res.digit}
                     </div>
                     <div style={{flex:1,fontWeight:700,color:"var(--win)",fontSize:13}}>
                       {res.winner || "—"}
                     </div>
-                    {/* Paid checkbox */}
                     <div onClick={() => togglePaid(slot.id)}
                       style={{cursor:"pointer",fontSize:11,color:res.paid?"var(--win)":"var(--text-dim)",
                         border:"1px solid",borderColor:res.paid?"var(--win)":"var(--border)",
                         borderRadius:4,padding:"2px 7px",userSelect:"none",flexShrink:0}}>
                       {res.paid ? "✓ Paid" : "Unpaid"}
                     </div>
+                  </>
+                ) : res?.pending ? (
+                  // Bot found this TV timeout — show score + projected winner, ready to lock
+                  <>
+                    <div style={{fontSize:12,color:"var(--court-bright)",minWidth:60,fontWeight:600}}>
+                      {res.scoreA}–{res.scoreB}
+                    </div>
+                    <div style={{fontSize:11,color:"var(--text-dim)",minWidth:52}}>
+                      …{res.scoreA%10}+…{res.scoreB%10}={res.digit}
+                    </div>
+                    <div style={{flex:1,fontWeight:600,color:"var(--court-bright)",fontSize:12}}>
+                      {res.winner || `Digit ${res.digit}`}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const digit = calcDigit(res.scoreA, res.scoreB);
+                        const winner = game.assignments[digit] || null;
+                        const updated = { ...game.results,
+                          [slot.id]: { ...res, digit, winner, locked: true, paid: false, pending: false }
+                        };
+                        onUpdate({ results: updated });
+                        onToast(winner ? `🔒 ${slot.label} locked — ${winner} wins!` : `🔒 ${slot.label} locked — digit ${digit}`);
+                      }}
+                      style={{
+                        background:"var(--court-dim)",color:"#fff",border:"none",
+                        borderRadius:5,padding:"3px 10px",fontSize:11,cursor:"pointer",
+                        fontWeight:600,flexShrink:0
+                      }}>
+                      🔒 Lock
+                    </button>
                   </>
                 ) : (
                   <div style={{fontSize:12,color:"var(--text-dim)",fontStyle:"italic",flex:1}}>
@@ -1739,6 +1768,25 @@ function TOLivePanel({ game, onUpdate, onToast }) {
     return 120000;
   };
 
+  // Map an array of ESPN TV-timeout plays to the 10 slot ids
+  // Slots: h1_16, h1_12, h1_8, h1_4, h1_0 (half), h2_16, h2_12, h2_8, h2_4, h2_0 (final)
+  // Logic: period 1 plays → first half slots in order of occurrence
+  //        period 2 plays → second half slots in order of occurrence
+  const mapTvTimeoutsToSlots = (tvPlays) => {
+    const half1Plays = tvPlays.filter(p => p.period === 1);
+    const half2Plays = tvPlays.filter(p => p.period === 2);
+    const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
+    const h2Slots = ["h2_16","h2_12","h2_8","h2_4","h2_0"];
+    const mapped = {};
+    half1Plays.forEach((play, i) => {
+      if (i < h1Slots.length) mapped[h1Slots[i]] = play;
+    });
+    half2Plays.forEach((play, i) => {
+      if (i < h2Slots.length) mapped[h2Slots[i]] = play;
+    });
+    return mapped;
+  };
+
   const fetchScores = useCallback(async () => {
     if (!game.teamA && !game.teamB) { setBotStatus("Set teams in Setup first"); return; }
     try {
@@ -1760,16 +1808,42 @@ function TOLivePanel({ game, onUpdate, onToast }) {
       const sA = found.awayScore, sB = found.homeScore;
       setScoreA(sA); setScoreB(sB);
       const status = mapStatus(found.status);
-      setBotLive(status === "in progress");
+      setBotLive(status === "in progress" || status === "halftime");
       setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
 
-      // Check play-by-play for a new Official TV Timeout
-      if (game.espnGameId && status === "in progress") {
+      // Always fetch play-by-play to retroactively fill all past TV timeouts
+      if (game.espnGameId) {
         try {
-          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball"}`);
+          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${path}`);
           const pbpData = await pbpRes.json();
-          const tvPlays = (pbpData.plays || []).filter(p => (p.text||"").toLowerCase().includes("official tv timeout"));
+          const tvPlays = (pbpData.plays || []).filter(p =>
+            (p.text||"").toLowerCase().includes("official tv timeout")
+          );
+
           if (tvPlays.length > 0) {
+            const slotMap = mapTvTimeoutsToSlots(tvPlays);
+            const updatedResults = { ...game.results };
+            let newLocks = 0;
+
+            Object.entries(slotMap).forEach(([slotId, play]) => {
+              // Only auto-fill slots that are NOT yet locked by the user
+              if (!updatedResults[slotId]?.locked) {
+                const tvScoreA = play.awayScore ?? sA;
+                const tvScoreB = play.homeScore ?? sB;
+                const digit = calcDigit(tvScoreA, tvScoreB);
+                const winner = game.assignments[digit] || null;
+                updatedResults[slotId] = {
+                  scoreA: tvScoreA, scoreB: tvScoreB,
+                  digit, winner, locked: false, paid: false,
+                  pending: true // flagged as "ready to lock" but not yet confirmed
+                };
+                newLocks++;
+              }
+            });
+
+            if (newLocks > 0) onUpdate({ results: updatedResults });
+
+            // Notify for the most recent NEW TV timeout
             const latest = tvPlays[tvPlays.length - 1];
             const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
             if (tvKey !== lastNotifiedKey.current) {
@@ -1778,24 +1852,22 @@ function TOLivePanel({ game, onUpdate, onToast }) {
               const tvScoreB = latest.homeScore ?? sB;
               const digit = calcDigit(tvScoreA, tvScoreB);
               const winner = game.assignments[digit] || null;
-              // Update score inputs to match the official TV timeout score
-              setScoreA(tvScoreA);
-              setScoreB(tvScoreB);
-              setBotStatus(`📺 Official TV Timeout detected! Score: ${tvScoreA}–${tvScoreB} · Digit ${digit}`);
+              setScoreA(tvScoreA); setScoreB(tvScoreB);
+              setBotStatus(`📺 TV Timeout detected! Score: ${tvScoreA}–${tvScoreB} · Digit ${digit}`);
               onToast(winner
-                ? `📺 TV Timeout! ${winner} is winning — digit ${digit} (${tvScoreA}–${tvScoreB})`
+                ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvScoreA}–${tvScoreB})`
                 : `📺 TV Timeout! Digit ${digit} — no player assigned`
               );
               if (Notification.permission === "granted") {
                 new Notification("⏱ Official TV Timeout!", {
                   body: winner
-                    ? `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit}  ·  ${winner} is winning`
-                    : `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit} — no player assigned`
+                    ? `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit}  ·  ${winner} wins`
+                    : `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit} — unassigned`
                 });
               }
             }
           }
-        } catch { /* play-by-play fetch failed silently — scores still update */ }
+        } catch { /* play-by-play failed silently */ }
       }
 
       if (timerRef.current) clearTimeout(timerRef.current);
