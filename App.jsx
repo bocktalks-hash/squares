@@ -375,8 +375,7 @@ html, body, #root { height:100%; background:var(--bg); color:var(--text); font-f
   display:flex; flex-direction:column; overflow:hidden;
 }
 .modal-player-list {
-  overflow-y:auto; flex:1; margin:0 -4px; padding:0 4px;
-  /* nice scrollbar */
+  overflow-y:auto; max-height:320px; margin:0 -4px; padding:0 4px;
   scrollbar-width:thin; scrollbar-color:var(--border) transparent;
 }
 .modal-title { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:1.5px; color:var(--court-bright); margin-bottom:14px; }
