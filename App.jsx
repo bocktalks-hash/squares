@@ -174,7 +174,8 @@ html, body, #root { height:100%; background:var(--bg); color:var(--text); font-f
   display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0;
   background: linear-gradient(90deg, var(--surface) 0%, #101626 100%);
 }
-.topbar-logo { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; color:var(--court-bright); }
+.topbar-logo { display:flex; align-items:center; gap:10px; font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; color:var(--court-bright); }
+.topbar-logo img { height:36px; width:36px; object-fit:contain; border-radius:50%; flex-shrink:0; }
 .topbar-logo span { color:var(--gold); }
 
 /* ── Layout ── */
@@ -1276,7 +1277,7 @@ export default function App() {
       <div className="app-shell">
         {/* Top Bar */}
         <div className="topbar">
-          <div className="topbar-logo">Bock Talks <span>Squares</span></div>
+          <div className="topbar-logo"><img src="/logo.svg" alt="Bock Talks logo" />Bock Talks <span>Squares</span></div>
         </div>
 
         {/* Main */}
