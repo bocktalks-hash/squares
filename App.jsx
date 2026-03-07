@@ -705,65 +705,32 @@ function SetupPanel({ game, onUpdate, onDelete }) {
       {/* ── Step 4: Players (only show after game selected) ── */}
       {gameSelected && (
         <div className="card">
-          <div className="card-title">Step 4 — Add Players</div>
-
-          {/* Search / add input — filters roster as you type */}
-          <div style={{display:"flex",gap:8,marginBottom:8}}>
-            <input
-              style={{flex:1,background:"var(--surface2)",border:"1px solid var(--court)",borderRadius:6,padding:"8px 12px",color:"var(--text)",outline:"none",fontSize:14,fontFamily:"'DM Sans',sans-serif"}}
-              placeholder={roster.length > 0 ? "Search or add new player..." : "Type a name and press Add..."}
-              value={newPlayer}
-              onChange={e=>setNewPlayer(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&addPlayer()} />
-            <button className="btn btn-primary" onClick={addPlayer}>Add</button>
+          <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>Step 4 — Select Players</span>
+            <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:400}}>
+              {game.players.length} selected · manage in Players tab
+            </span>
           </div>
 
-          {/* Filtered roster list */}
-          {(() => {
-            const filtered = roster.filter(p =>
-              newPlayer.trim() === "" || p.toLowerCase().includes(newPlayer.toLowerCase())
-            );
-            return filtered.length > 0 ? (
-              <div className="roster-picker">
-                {filtered.map(p => {
-                  const inGame = game.players.includes(p);
-                  return (
-                    <div key={p} className={`roster-row ${inGame?"in-game":""}`}
-                      onClick={() => togglePlayer(p)}>
-                      <div className={`roster-check ${inGame?"checked":""}`}>
-                        {inGame && "✓"}
-                      </div>
-                      <div className="roster-name">
-                        {/* Highlight matching part */}
-                        {newPlayer.trim() ? (() => {
-                          const idx = p.toLowerCase().indexOf(newPlayer.toLowerCase());
-                          if (idx === -1) return p;
-                          return <>
-                            {p.slice(0, idx)}
-                            <span style={{color:"var(--court-bright)",fontWeight:700}}>{p.slice(idx, idx+newPlayer.length)}</span>
-                            {p.slice(idx+newPlayer.length)}
-                          </>;
-                        })() : p}
-                      </div>
-                      <div className="roster-del" onClick={e=>{e.stopPropagation();deleteFromRoster(p);}}>×</div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : newPlayer.trim() && !roster.includes(newPlayer.trim()) ? (
-              <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:8,padding:"6px 2px"}}>
-                Press <strong style={{color:"var(--court-bright)"}}>Add</strong> to create "{newPlayer.trim()}" and save to your roster
-              </div>
-            ) : null;
-          })()}
-
-          {game.players.length > 0 && (
-            <div style={{fontSize:11,color:"var(--text-dim)",marginBottom:10}}>
-              {game.players.length} player{game.players.length!==1?"s":""} in this game: {game.players.join(", ")}
+          {roster.length === 0 ? (
+            <div style={{fontSize:13,color:"var(--text-dim)",padding:"10px 0"}}>
+              No players in your roster yet — go to the <strong style={{color:"var(--court-bright)"}}>Players</strong> tab to add some.
+            </div>
+          ) : (
+            <div className="roster-picker">
+              {roster.map(p => {
+                const inGame = game.players.includes(p);
+                return (
+                  <div key={p} className={`roster-row ${inGame ? "in-game" : ""}`} onClick={() => togglePlayer(p)}>
+                    <div className={`roster-check ${inGame ? "checked" : ""}`}>{inGame && "✓"}</div>
+                    <div className="roster-name">{p}</div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          <div style={{display:"flex",gap:8}}>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
             <button className="btn btn-secondary btn-sm" onClick={autoAssign} disabled={!game.players.length}>
               Auto-Assign Grid
             </button>
@@ -1147,7 +1114,7 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div className="inner-tabs">
-        {["setup","grid","scores","history"].map(t=>(
+        {["setup","grid","scores","players","history"].map(t=>(
           <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={()=>setTab(t)}>
             {t}
           </div>
@@ -1157,7 +1124,106 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
         {tab==="setup"   && <SetupPanel game={game} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab==="grid"    && <GridPanel game={game} onUpdate={onUpdate} />}
         {tab==="scores"  && <ScoresPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab==="players" && <PlayersPanel />}
         {tab==="history" && <HistoryPanel game={game} />}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Players Panel ────────────────────────────────────────────────────────────
+function PlayersPanel() {
+  const [roster, setRoster] = useState(() => loadRoster());
+  const [search, setSearch] = useState("");
+  const [newName, setNewName] = useState("");
+  const inputRef = useRef(null);
+
+  const updateRoster = (r) => { setRoster(r); saveRoster(r); };
+
+  const addNew = () => {
+    const n = newName.trim();
+    if (!n || roster.includes(n)) { setNewName(""); return; }
+    updateRoster([...roster, n]);
+    setNewName("");
+    inputRef.current?.focus();
+  };
+
+  const deletePlayer = (p) => updateRoster(roster.filter(x => x !== p));
+
+  const filtered = roster.filter(p =>
+    search.trim() === "" || p.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div style={{padding:"0 4px"}}>
+      <div className="card">
+        <div className="card-title">Player Roster</div>
+        <p style={{fontSize:12,color:"var(--text-dim)",marginBottom:14}}>
+          Your saved players are available across all games — squares, timeout game, everything.
+          Add or remove players here.
+        </p>
+
+        {/* Add new */}
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <input
+            ref={inputRef}
+            style={{flex:1,background:"var(--surface2)",border:"1px solid var(--court)",borderRadius:6,
+              padding:"8px 12px",color:"var(--text)",outline:"none",fontSize:14,fontFamily:"'DM Sans',sans-serif"}}
+            placeholder="Add new player..."
+            value={newName}
+            onChange={e=>setNewName(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addNew()} />
+          <button className="btn btn-primary" onClick={addNew}>Add</button>
+        </div>
+
+        {/* Search */}
+        {roster.length > 6 && (
+          <div style={{marginBottom:10}}>
+            <input
+              style={{width:"100%",boxSizing:"border-box",background:"var(--surface2)",
+                border:"1px solid var(--border)",borderRadius:6,padding:"7px 12px",
+                color:"var(--text)",outline:"none",fontSize:13,fontFamily:"'DM Sans',sans-serif"}}
+              placeholder={`Search ${roster.length} players...`}
+              value={search}
+              onChange={e=>setSearch(e.target.value)} />
+          </div>
+        )}
+
+        {/* Roster list */}
+        {filtered.length === 0 && search ? (
+          <div style={{fontSize:13,color:"var(--text-dim)",padding:"10px 0"}}>No players match "{search}"</div>
+        ) : filtered.length === 0 ? (
+          <div style={{fontSize:13,color:"var(--text-dim)",padding:"10px 0"}}>No players yet — add some above!</div>
+        ) : (
+          <div className="roster-picker">
+            {filtered.map(p => {
+              const idx = search ? p.toLowerCase().indexOf(search.toLowerCase()) : -1;
+              return (
+                <div key={p} className="roster-row" style={{cursor:"default"}}>
+                  <div className="roster-name" style={{flex:1}}>
+                    {idx >= 0 ? (
+                      <>
+                        {p.slice(0, idx)}
+                        <span style={{color:"var(--court-bright)",fontWeight:700}}>{p.slice(idx, idx+search.length)}</span>
+                        {p.slice(idx+search.length)}
+                      </>
+                    ) : p}
+                  </div>
+                  <div className="roster-del"
+                    style={{opacity:1,cursor:"pointer",fontSize:18,padding:"0 6px",color:"var(--text-dim)"}}
+                    onClick={()=>deletePlayer(p)}>×</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {roster.length > 0 && (
+          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:10}}>
+            {roster.length} player{roster.length!==1?"s":""} in roster
+          </div>
+        )}
       </div>
     </div>
   );
