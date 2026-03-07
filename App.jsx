@@ -371,7 +371,13 @@ html, body, #root { height:100%; background:var(--bg); color:var(--text); font-f
 }
 .modal {
   background:var(--surface); border:1px solid var(--border); border-radius:12px;
-  padding:20px; width:100%; max-width:320px; max-height:80vh; overflow-y:auto;
+  padding:20px; width:100%; max-width:320px; max-height:80vh;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.modal-player-list {
+  overflow-y:auto; flex:1; margin:0 -4px; padding:0 4px;
+  /* nice scrollbar */
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
 }
 .modal-title { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:1.5px; color:var(--court-bright); margin-bottom:14px; }
 .player-option {
@@ -459,17 +465,21 @@ function AssignModal({ game, cell, onAssign, onClear, onClose }) {
         <p style={{fontSize:12,color:"var(--text-dim)",marginBottom:12}}>
           Col {cell[1]+1} · Row {cell[0]+1}
         </p>
-        {game.players.map(p => (
-          <div key={p} className="player-option" onClick={() => onAssign(p)}>{p}</div>
-        ))}
-        {game.grid[cell[0]][cell[1]] && (
-          <button className="btn btn-danger btn-sm" style={{marginTop:10,width:"100%"}} onClick={onClear}>
-            Clear Square
+        <div className="modal-player-list">
+          {game.players.map(p => (
+            <div key={p} className="player-option" onClick={() => onAssign(p)}>{p}</div>
+          ))}
+        </div>
+        <div style={{flexShrink:0, marginTop:10}}>
+          {game.grid[cell[0]][cell[1]] && (
+            <button className="btn btn-danger btn-sm" style={{marginBottom:6,width:"100%"}} onClick={onClear}>
+              Clear Square
+            </button>
+          )}
+          <button className="btn btn-secondary btn-sm" style={{width:"100%"}} onClick={onClose}>
+            Cancel
           </button>
-        )}
-        <button className="btn btn-secondary btn-sm" style={{marginTop:6,width:"100%"}} onClick={onClose}>
-          Cancel
-        </button>
+        </div>
       </div>
     </div>
   );
