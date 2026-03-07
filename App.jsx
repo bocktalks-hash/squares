@@ -144,301 +144,513 @@ function saveState(games, activeId) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const css = `
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Barlow+Condensed:wght@500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
 
 :root {
-  --bg: #0a0d12;
-  --surface: #141820;
-  --surface2: #1c2230;
-  --border: #2a3345;
+  --bg: #080b10;
+  --surface: #0f1318;
+  --surface2: #161c24;
+  --surface3: #1e2736;
+  --border: #232d3f;
+  --border-bright: #2e3d56;
   --court: #3366CC;
-  --court-dim: #1e3d7a;
-  --court-bright: #4d7de8;
-  --gold: #ffffff;
-  --gold-dim: rgba(255,255,255,0.55);
-  --text: #e8edf5;
-  --text-dim: #7a8899;
+  --court-dim: #1a3266;
+  --court-mid: #2a4d99;
+  --court-bright: #5585e8;
+  --court-glow: rgba(51,102,204,0.15);
+  --text: #dde4f0;
+  --text-mid: #9aaabf;
+  --text-dim: #5a6a7e;
   --win: #22c55e;
-  --win-dim: rgba(34,197,94,0.15);
+  --win-dim: rgba(34,197,94,0.12);
+  --win-glow: rgba(34,197,94,0.25);
   --danger: #ef4444;
+  --danger-dim: rgba(239,68,68,0.12);
   --warn: #f59e0b;
+  --warn-dim: rgba(245,158,11,0.12);
 }
 
-html, body, #root { height:100%; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; overflow:hidden; }
+html, body, #root {
+  height:100%; background:var(--bg); color:var(--text);
+  font-family:'DM Sans',sans-serif; overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
 
 /* ── Top Bar ── */
 .topbar {
-  height:52px; background:var(--surface); border-bottom:1px solid var(--border);
-  display:flex; align-items:center; padding:0 16px; gap:12px; flex-shrink:0;
-  background: linear-gradient(90deg, var(--surface) 0%, #101626 100%);
+  height:54px; flex-shrink:0;
+  background: linear-gradient(180deg, #0d1520 0%, var(--surface) 100%);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:10px;
+  position:relative;
 }
-.topbar-logo { display:flex; align-items:center; gap:10px; font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:2px; color:var(--court-bright); }
-.topbar-logo img { height:36px; width:36px; object-fit:contain; border-radius:50%; flex-shrink:0; }
-.topbar-logo span { color:var(--gold); }
+.topbar::after {
+  content:''; position:absolute; bottom:0; left:0; right:0; height:1px;
+  background: linear-gradient(90deg, transparent, var(--court-dim), transparent);
+}
+.topbar-logo {
+  display:flex; align-items:center; gap:9px;
+  font-family:'Barlow Condensed',sans-serif; font-size:20px;
+  font-weight:700; letter-spacing:2.5px; color:var(--text-mid);
+  text-transform:uppercase;
+}
+.topbar-logo img { height:34px; width:34px; object-fit:contain; border-radius:50%; flex-shrink:0; }
+.topbar-logo span { color:#fff; font-weight:700; }
+
+/* ── Mode Switcher ── */
+.mode-switcher { display:flex; gap:4px; margin-left:auto; }
+.mode-btn {
+  padding:5px 12px; border-radius:5px; font-size:11px; font-weight:600;
+  cursor:pointer; border:1px solid var(--border); color:var(--text-dim);
+  background:transparent; transition:all .15s; letter-spacing:.5px;
+  font-family:'DM Sans',sans-serif;
+}
+.mode-btn:hover { border-color:var(--border-bright); color:var(--text-mid); }
+.mode-btn.active {
+  background:var(--court); border-color:var(--court);
+  color:#fff; box-shadow:0 0 12px rgba(51,102,204,0.35);
+}
 
 /* ── Layout ── */
 .app-shell { display:flex; flex-direction:column; height:100vh; }
-.main-area { flex:1; overflow:hidden; display:flex; flex-direction:column; }
-.game-content { flex:1; overflow-y:auto; padding:16px; }
+.main-area { flex:1; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+.game-content { flex:1; overflow-y:auto; padding:14px 14px 20px; }
+.game-content::-webkit-scrollbar { width:4px; }
+.game-content::-webkit-scrollbar-track { background:transparent; }
+.game-content::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 
-/* ── Tab Bar ── */
+/* ── Bottom Game Tabs ── */
 .tab-bar {
-  display:flex; align-items:center; gap:0; background:var(--surface);
+  display:flex; align-items:stretch; background:var(--surface);
   border-top:1px solid var(--border); flex-shrink:0; overflow-x:auto;
-  scrollbar-width:none; padding:0 4px;
+  scrollbar-width:none; min-height:46px;
 }
 .tab-bar::-webkit-scrollbar { display:none; }
 .tab-item {
-  flex-shrink:0; padding:10px 16px; cursor:pointer; font-size:12px; font-weight:600;
+  flex-shrink:0; padding:0 16px; cursor:pointer; font-size:11px; font-weight:600;
   color:var(--text-dim); border-top:2px solid transparent; white-space:nowrap;
-  transition:all .15s; display:flex; align-items:center; gap:6px; letter-spacing:.5px;
-  text-transform:uppercase;
+  transition:all .15s; display:flex; align-items:center; gap:6px;
+  letter-spacing:.8px; text-transform:uppercase; position:relative;
 }
-.tab-item:hover { color:var(--text); }
-.tab-item.active { color:var(--court-bright); border-top-color:var(--court); }
-.tab-item .tab-close { opacity:0; font-size:14px; color:var(--text-dim); transition:opacity .15s; }
+.tab-item:hover { color:var(--text-mid); background:rgba(255,255,255,0.02); }
+.tab-item.active { color:var(--court-bright); border-top-color:var(--court); background:rgba(51,102,204,0.06); }
+.tab-item .tab-close {
+  opacity:0; font-size:13px; color:var(--text-dim);
+  transition:opacity .15s; margin-left:2px; line-height:1;
+}
 .tab-item:hover .tab-close { opacity:1; }
+.tab-item .tab-close:hover { color:var(--danger); }
 .tab-add {
-  flex-shrink:0; padding:10px 14px; cursor:pointer; color:var(--text-dim);
-  font-size:18px; transition:color .15s;
+  flex-shrink:0; padding:0 16px; cursor:pointer; color:var(--text-dim);
+  font-size:20px; display:flex; align-items:center; transition:all .15s;
 }
-.tab-add:hover { color:var(--court-bright); }
+.tab-add:hover { color:var(--court-bright); background:rgba(51,102,204,0.06); }
 
 /* ── Inner Tabs ── */
-.inner-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; flex-shrink:0; }
-.inner-tab {
-  padding:10px 18px; cursor:pointer; font-size:13px; font-weight:600; letter-spacing:.4px;
-  color:var(--text-dim); border-bottom:2px solid transparent; text-transform:uppercase;
-  transition:all .15s;
+.inner-tabs {
+  display:flex; gap:0; border-bottom:1px solid var(--border);
+  margin-bottom:14px; flex-shrink:0; overflow-x:auto; scrollbar-width:none;
 }
-.inner-tab:hover { color:var(--text); }
+.inner-tabs::-webkit-scrollbar { display:none; }
+.inner-tab {
+  flex-shrink:0; padding:9px 16px; cursor:pointer; font-size:11px; font-weight:600;
+  letter-spacing:.8px; color:var(--text-dim); border-bottom:2px solid transparent;
+  text-transform:uppercase; transition:all .15s; white-space:nowrap;
+  display:flex; align-items:center; gap:5px;
+}
+.inner-tab:hover { color:var(--text-mid); }
 .inner-tab.active { color:var(--court-bright); border-bottom-color:var(--court); }
 
 /* ── Cards ── */
 .card {
-  background:var(--surface); border:1px solid var(--border); border-radius:10px;
-  padding:16px; margin-bottom:14px;
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:16px; margin-bottom:12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
 }
 .card-title {
-  font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:1.5px;
-  color:var(--court-bright); margin-bottom:12px;
+  font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700;
+  letter-spacing:2px; color:var(--court-bright); margin-bottom:12px;
+  text-transform:uppercase;
+}
+
+/* ── Live Score Card — elevated prominence ── */
+.live-score-card {
+  background: linear-gradient(160deg, #0d1726 0%, #0a1020 100%);
+  border:1px solid var(--court-dim); border-radius:12px;
+  padding:16px; margin-bottom:12px;
+  box-shadow: 0 0 0 1px rgba(51,102,204,0.1), 0 4px 20px rgba(0,0,0,0.4);
 }
 
 /* ── Form Elements ── */
 .field { margin-bottom:12px; }
-.field label { display:block; font-size:11px; font-weight:600; letter-spacing:.8px; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; }
-.field input, .field select {
-  width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px;
-  padding:9px 12px; color:var(--text); font-size:14px; font-family:'DM Sans',sans-serif;
-  outline:none; transition:border-color .15s;
+.field label {
+  display:block; font-size:10px; font-weight:600; letter-spacing:1px;
+  text-transform:uppercase; color:var(--text-dim); margin-bottom:5px;
 }
-.field input:focus, .field select:focus { border-color:var(--court); }
+.field input, .field select {
+  width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:7px;
+  padding:9px 12px; color:var(--text); font-size:14px; font-family:'Inter',sans-serif;
+  outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.field input:focus, .field select:focus {
+  border-color:var(--court); box-shadow:0 0 0 3px rgba(51,102,204,0.15);
+}
 .field select option { background:var(--surface2); }
 
 /* ── Buttons ── */
 .btn {
-  display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:6px;
-  font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .15s;
-  font-family:'DM Sans',sans-serif; letter-spacing:.3px;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:9px 16px; border-radius:7px; font-size:13px; font-weight:600;
+  cursor:pointer; border:none; transition:all .15s;
+  font-family:'Inter',sans-serif; letter-spacing:.2px; white-space:nowrap;
 }
 .btn-primary { background:var(--court); color:#fff; }
-.btn-primary:hover { background:var(--court-bright); }
-.btn-secondary { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
-.btn-secondary:hover { border-color:var(--court); color:var(--court-bright); }
-.btn-danger { background:#7f1d1d; color:#fca5a5; }
-.btn-danger:hover { background:var(--danger); color:#fff; }
-.btn-win { background:var(--win-dim); color:var(--win); border:1px solid var(--win); }
+.btn-primary:hover { background:var(--court-bright); box-shadow:0 0 14px rgba(51,102,204,0.4); }
+.btn-secondary { background:var(--surface2); color:var(--text-mid); border:1px solid var(--border); }
+.btn-secondary:hover { border-color:var(--border-bright); color:var(--text); }
+.btn-danger { background:var(--danger-dim); color:#fca5a5; border:1px solid rgba(239,68,68,0.25); }
+.btn-danger:hover { background:var(--danger); color:#fff; border-color:var(--danger); }
+.btn-win {
+  background: linear-gradient(135deg, rgba(34,197,94,0.18), rgba(34,197,94,0.08));
+  color:var(--win); border:1px solid rgba(34,197,94,0.35);
+}
+.btn-win:hover { background:var(--win); color:#000; border-color:var(--win); box-shadow:0 0 14px rgba(34,197,94,0.3); }
 .btn-sm { padding:6px 11px; font-size:12px; }
 .btn-xs { padding:4px 8px; font-size:11px; }
-.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn:disabled { opacity:.35; cursor:not-allowed; }
 
 /* ── Player Chips ── */
-.player-list { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:10px; }
+.player-list { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
 .player-chip {
   display:inline-flex; align-items:center; gap:5px; background:var(--surface2);
   border:1px solid var(--border); border-radius:20px; padding:4px 10px; font-size:12px;
+  transition:border-color .12s;
 }
-.player-chip .rm { cursor:pointer; color:var(--text-dim); font-size:14px; transition:color .12s; }
+.player-chip:hover { border-color:var(--border-bright); }
+.player-chip .rm { cursor:pointer; color:var(--text-dim); font-size:14px; transition:color .12s; line-height:1; }
 .player-chip .rm:hover { color:var(--danger); }
 
 /* ── Grid ── */
-.grid-wrap { overflow-x:auto; }
-.sq-grid { border-collapse:collapse; min-width:300px; width:100%; }
+.grid-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.sq-grid { border-collapse:collapse; width:100%; table-layout:fixed; }
 .sq-grid th, .sq-grid td {
-  border:1px solid var(--border); text-align:center; font-size:11px; padding:0;
+  border:1px solid var(--border); text-align:center; font-size:10px; padding:0;
 }
-.sq-grid th { background:var(--surface2); color:var(--text-dim); font-weight:700; padding:6px 4px; letter-spacing:.5px; }
-.col-header { font-size:13px; color:var(--court-bright); font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
+.sq-grid th {
+  background:var(--surface2); color:var(--text-dim); font-weight:700;
+  padding:5px 2px; letter-spacing:.3px;
+}
+.col-header {
+  font-size:14px; color:var(--court-bright);
+  font-family:'Bebas Neue',sans-serif; letter-spacing:1px;
+}
 .sq-cell {
-  width:60px; height:52px; cursor:pointer; transition:background .15s;
-  font-size:10px; font-weight:600; color:var(--text-dim);
-  overflow:hidden; padding:0;
-  /* make the whole cell a flex box so content centers perfectly */
+  height:50px; cursor:pointer; transition:background .12s, color .12s;
+  font-size:9px; font-weight:600; color:var(--text-dim);
+  overflow:hidden; padding:2px;
   display:table-cell; vertical-align:middle; text-align:center;
-  user-select:none;
+  user-select:none; word-break:break-word; line-height:1.2;
 }
-.sq-cell:hover { background:var(--surface2); color:var(--text); }
-.sq-cell.filled { color:var(--text); background: rgba(51,102,204,0.08); }
-.sq-cell.winner-now { background:rgba(34,197,94,0.2) !important; color:var(--win) !important; box-shadow:inset 0 0 0 2px var(--win); font-weight:700; }
-.sq-cell.winner-prev { background:rgba(34,197,94,0.07) !important; color:rgba(34,197,94,0.7) !important; }
-.sq-cell.empty-cell { color:transparent; }
-.sq-cell.empty-cell:hover { color:var(--text-dim); }
+.sq-cell:hover { background:var(--surface3); color:var(--text); }
+.sq-cell.filled { color:var(--text-mid); background:rgba(51,102,204,0.07); }
+.sq-cell.filled:hover { background:rgba(51,102,204,0.14); }
+.sq-cell.winner-now {
+  background: linear-gradient(135deg, rgba(34,197,94,0.25), rgba(34,197,94,0.1)) !important;
+  color:var(--win) !important;
+  box-shadow:inset 0 0 0 2px var(--win);
+  font-weight:700; animation:winPulse 2s ease-in-out infinite;
+}
+.sq-cell.winner-prev {
+  background:rgba(34,197,94,0.06) !important;
+  color:rgba(34,197,94,0.6) !important;
+  box-shadow:inset 0 0 0 1px rgba(34,197,94,0.2);
+}
+.sq-cell.empty-cell { color:var(--border-bright); font-size:14px; }
+.sq-cell.empty-cell:hover { color:var(--court-bright); background:var(--court-glow); }
+@keyframes winPulse {
+  0%,100% { box-shadow:inset 0 0 0 2px var(--win), 0 0 0 0 rgba(34,197,94,0); background: linear-gradient(135deg, rgba(34,197,94,0.22), rgba(34,197,94,0.08)) !important; }
+  50% { box-shadow:inset 0 0 0 2px var(--win), 0 0 14px 3px rgba(34,197,94,0.25); background: linear-gradient(135deg, rgba(34,197,94,0.3), rgba(34,197,94,0.12)) !important; }
+}
 
 /* ── Score Bot ── */
-.bot-header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.bot-status { font-size:11px; color:var(--text-dim); }
+.bot-header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.bot-status { font-size:11px; color:var(--text-dim); flex:1; min-width:0; }
 .bot-status.live { color:#f87171; }
-.pulse { display:inline-block; width:7px; height:7px; border-radius:50%; background:#f87171; animation:pulse 1.2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+.pulse { display:inline-block; width:7px; height:7px; border-radius:50%; background:#f87171; animation:pulse 1.4s ease-in-out infinite; flex-shrink:0; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }
 
+/* ── Score Display ── */
 .score-display {
-  display:flex; align-items:center; justify-content:center; gap:20px;
-  padding:18px; background:var(--surface2); border-radius:8px; margin:12px 0;
+  display:flex; align-items:center; justify-content:center; gap:16px;
+  padding:20px 16px 16px;
+  background: linear-gradient(160deg, var(--surface2) 0%, #101520 100%);
+  border-radius:10px; margin:10px 0; border:1px solid var(--border);
+  position:relative; overflow:hidden;
 }
-.score-team { text-align:center; }
-.score-team-name { font-size:11px; color:var(--text-dim); font-weight:600; letter-spacing:.8px; text-transform:uppercase; margin-bottom:4px; }
-.score-num { font-family:'Bebas Neue',sans-serif; font-size:48px; line-height:1; color:var(--text); }
-.score-sep { font-family:'Bebas Neue',sans-serif; font-size:32px; color:var(--border); }
-.score-detail { text-align:center; font-size:12px; color:var(--text-dim); margin-top:4px; }
+.score-display::before {
+  content:''; position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:60%; height:1px;
+  background: linear-gradient(90deg, transparent, rgba(51,102,204,0.4), transparent);
+}
+.score-team { text-align:center; flex:1; }
+.score-team-name {
+  font-size:10px; color:var(--text-dim); font-weight:600;
+  letter-spacing:1px; text-transform:uppercase; margin-bottom:4px;
+}
+.score-num {
+  font-family:'Bebas Neue',sans-serif; font-size:62px; line-height:1;
+  color:var(--text); letter-spacing:-1px;
+}
+.score-sep {
+  font-family:'Bebas Neue',sans-serif; font-size:28px;
+  color:var(--border-bright); flex-shrink:0;
+}
+.score-detail { text-align:center; font-size:11px; color:var(--text-dim); margin-top:4px; }
+
+/* ── Winner Preview ── */
 .winner-preview {
-  background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04));
-  border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:12px 16px;
-  text-align:center; margin:8px 0;
+  background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.03));
+  border:1px solid rgba(34,197,94,0.25); border-radius:10px;
+  padding:14px 16px; text-align:center; margin:10px 0;
+  position:relative; overflow:hidden;
 }
-.winner-preview .label { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
-.winner-preview .name { font-family:'Bebas Neue',sans-serif; font-size:26px; color:var(--win); letter-spacing:1px; }
+.winner-preview::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(34,197,94,0.4), transparent);
+}
+.winner-preview .label {
+  font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--text-dim); margin-bottom:6px; font-weight:600;
+}
+.winner-preview .digit-eq {
+  font-size:11px; color:var(--text-dim); margin-bottom:6px;
+}
+.winner-preview .name {
+  font-family:'Barlow Condensed',sans-serif; font-size:30px; font-weight:700;
+  color:var(--win); letter-spacing:1px; line-height:1;
+}
 
 /* ── Score Inputs ── */
-.score-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-.score-row label { font-size:12px; font-weight:600; color:var(--text-dim); min-width:70px; }
-.score-stepper { display:flex; align-items:center; gap:0; }
-.score-stepper button {
-  background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  width:28px; height:32px; cursor:pointer; font-size:16px; transition:background .1s;
+.score-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.score-row label {
+  font-size:11px; font-weight:600; color:var(--text-dim);
+  min-width:52px; letter-spacing:.5px; text-transform:uppercase;
 }
-.score-stepper button:hover { background:var(--border); }
-.score-stepper button:first-child { border-radius:6px 0 0 6px; }
-.score-stepper button:last-child { border-radius:0 6px 6px 0; }
+.score-stepper { display:flex; align-items:center; }
+.score-stepper button {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text-mid);
+  width:36px; height:36px; cursor:pointer; font-size:18px;
+  transition:all .1s; display:flex; align-items:center; justify-content:center;
+}
+.score-stepper button:hover { background:var(--surface3); color:var(--text); border-color:var(--border-bright); }
+.score-stepper button:first-child { border-radius:7px 0 0 7px; }
+.score-stepper button:last-child { border-radius:0 7px 7px 0; }
 .score-stepper input {
-  width:52px; height:32px; background:var(--surface2); border:1px solid var(--border);
+  width:60px; height:36px; background:var(--surface2); border:1px solid var(--border);
   border-left:none; border-right:none; color:var(--text); text-align:center;
-  font-size:15px; font-weight:700; outline:none;
+  font-size:16px; font-weight:700; outline:none; font-family:'Bebas Neue',sans-serif;
 }
 
 /* ── Period Tabs ── */
-.period-tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+.period-tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
 .period-tab {
-  padding:6px 14px; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer;
+  padding:7px 16px; border-radius:20px; font-size:11px; font-weight:600; cursor:pointer;
   border:1px solid var(--border); color:var(--text-dim); transition:all .15s;
-  letter-spacing:.3px;
+  letter-spacing:.5px; text-transform:uppercase;
 }
-.period-tab:hover { border-color:var(--court); color:var(--court-bright); }
-.period-tab.active { background:var(--court); border-color:var(--court); color:#fff; }
-.period-tab.locked { background:var(--win-dim); border-color:var(--win); color:var(--win); }
+.period-tab:hover { border-color:var(--border-bright); color:var(--text-mid); }
+.period-tab.active { background:var(--court); border-color:var(--court); color:#fff; box-shadow:0 0 10px rgba(51,102,204,0.3); }
+.period-tab.locked { background:var(--win-dim); border-color:rgba(34,197,94,0.3); color:var(--win); }
 
 /* ── Results History ── */
 .result-row {
-  display:flex; align-items:center; gap:10px; padding:10px 0;
+  display:flex; align-items:center; gap:10px; padding:11px 0;
   border-bottom:1px solid var(--border); font-size:13px;
 }
 .result-row:last-child { border-bottom:none; }
-.result-period { font-family:'Bebas Neue',sans-serif; font-size:15px; color:var(--court-bright); min-width:56px; }
-.result-score { color:var(--text-dim); font-size:12px; min-width:70px; }
-.result-name { font-weight:700; color:var(--win); flex:1; }
-.result-digits { font-size:11px; color:var(--text-dim); }
+.result-period {
+  font-family:'Barlow Condensed',sans-serif; font-size:14px; font-weight:700;
+  color:var(--court-bright); min-width:52px; letter-spacing:.5px; text-transform:uppercase;
+}
+.result-score { color:var(--text-dim); font-size:12px; min-width:68px; font-variant-numeric:tabular-nums; }
+.result-name { font-weight:700; color:var(--win); flex:1; font-size:14px; }
+.result-digits { font-size:10px; color:var(--text-dim); font-variant-numeric:tabular-nums; }
 
 /* ── Empty State ── */
-.empty { text-align:center; padding:40px 20px; color:var(--text-dim); }
-.empty-icon { font-size:40px; margin-bottom:12px; opacity:.4; }
-.empty-text { font-size:14px; }
+.empty { text-align:center; padding:48px 20px; color:var(--text-dim); }
+.empty-icon { font-size:36px; margin-bottom:12px; opacity:.3; }
+.empty-text { font-size:13px; line-height:1.6; }
 
 /* ── Toast ── */
-.toast-wrap { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); z-index:1000; pointer-events:none; }
+.toast-wrap {
+  position:fixed; bottom:70px; left:50%; transform:translateX(-50%);
+  z-index:1000; pointer-events:none; width:calc(100% - 32px); max-width:380px;
+}
 .toast {
-  background:var(--surface); border:1px solid var(--win); border-radius:10px;
-  padding:12px 20px; font-size:13px; font-weight:600; color:var(--text);
-  box-shadow:0 4px 24px rgba(0,0,0,.5); animation:slideUp .3s ease;
+  background:var(--surface); border:1px solid var(--win);
+  border-radius:10px; padding:13px 18px; font-size:13px; font-weight:600; color:var(--text);
+  box-shadow:0 4px 30px rgba(0,0,0,.6), 0 0 20px rgba(34,197,94,0.15);
+  animation:slideUp .25s cubic-bezier(.34,1.56,.64,1);
   display:flex; align-items:center; gap:10px;
 }
-@keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes slideUp {
+  from { transform:translateY(16px); opacity:0; }
+  to { transform:translateY(0); opacity:1; }
+}
 
 /* ── Modal ── */
 .modal-overlay {
-  position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:500;
+  position:fixed; inset:0; background:rgba(0,0,0,.75);
+  backdrop-filter:blur(4px); z-index:500;
   display:flex; align-items:center; justify-content:center; padding:16px;
+  animation:fadeIn .15s ease;
 }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
 .modal {
-  background:var(--surface); border:1px solid var(--border); border-radius:12px;
-  padding:20px; width:100%; max-width:320px; max-height:80vh;
+  background:var(--surface); border:1px solid var(--border-bright); border-radius:14px;
+  padding:20px; width:100%; max-width:320px; max-height:82vh;
   display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.7);
+  animation:modalIn .2s cubic-bezier(.34,1.2,.64,1);
 }
+@keyframes modalIn { from{transform:scale(.95);opacity:0} to{transform:scale(1);opacity:1} }
 .modal-player-list {
   overflow-y:auto; max-height:320px; margin:0 -4px; padding:0 4px;
   scrollbar-width:thin; scrollbar-color:var(--border) transparent;
 }
-.modal-title { font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:1.5px; color:var(--court-bright); margin-bottom:14px; }
+.modal-title {
+  font-family:'Barlow Condensed',sans-serif; font-size:18px; font-weight:700;
+  letter-spacing:1.5px; color:var(--court-bright); margin-bottom:14px;
+  text-transform:uppercase;
+}
 .player-option {
-  padding:10px 14px; cursor:pointer; border-radius:6px; font-size:13px;
-  transition:background .1s; margin-bottom:4px;
+  padding:11px 14px; cursor:pointer; border-radius:7px; font-size:13px;
+  transition:background .1s; margin-bottom:3px; color:var(--text-mid);
 }
-.player-option:hover { background:var(--surface2); color:var(--court-bright); }
-
-/* ── Responsive ── */
-@media(max-width:480px) {
-  .score-num { font-size:36px; }
-  .sq-cell { width:48px; height:44px; font-size:9px; }
-}
+.player-option:hover { background:var(--surface2); color:var(--text); }
 
 /* ── Roster picker ── */
 .roster-picker {
   border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:10px;
   max-height:220px; overflow-y:auto;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
 }
 .roster-row {
-  display:flex; align-items:center; gap:10px; padding:9px 12px;
-  border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s;
+  display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border-bottom:1px solid var(--border); cursor:pointer; transition:background .1s;
   font-size:13px;
 }
 .roster-row:last-child { border-bottom:none; }
 .roster-row:hover { background:var(--surface2); }
 .roster-row.in-game { background:rgba(51,102,204,0.08); }
-.roster-check { width:16px; height:16px; border-radius:4px; border:2px solid var(--border);
-  display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:10px; }
+.roster-check {
+  width:17px; height:17px; border-radius:4px; border:2px solid var(--border);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:10px;
+  transition:all .12s;
+}
 .roster-check.checked { background:var(--court); border-color:var(--court); color:#fff; }
-.roster-name { flex:1; }
-.roster-del { color:var(--text-dim); font-size:16px; padding:0 4px; opacity:0; transition:opacity .12s; }
+.roster-name { flex:1; color:var(--text-mid); }
+.roster-del { color:var(--text-dim); font-size:16px; padding:0 4px; opacity:0; transition:opacity .12s; line-height:1; }
 .roster-row:hover .roster-del { opacity:1; }
 .roster-del:hover { color:var(--danger); }
 
 /* ── Digit assignment display ── */
 .digit-assign { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .digit-card {
-  background:var(--surface2); border:1px solid var(--border); border-radius:8px;
-  padding:8px 12px; min-width:80px; text-align:center;
+  background:var(--surface2); border:1px solid var(--border); border-radius:9px;
+  padding:10px 12px; min-width:76px; text-align:center; transition:border-color .12s;
 }
-.digit-card .dnum { font-family:'Bebas Neue',sans-serif; font-size:28px; color:var(--court-bright); line-height:1; }
-.digit-card .dpair { font-size:10px; color:var(--text-dim); margin-bottom:2px; letter-spacing:.5px; }
-.digit-card .dname { font-size:11px; font-weight:600; color:var(--text); }
+.digit-card:hover { border-color:var(--border-bright); }
+.digit-card .dnum {
+  font-family:'Bebas Neue',sans-serif; font-size:32px; color:var(--court-bright);
+  line-height:1;
+}
+.digit-card .dpair { font-size:9px; color:var(--text-dim); margin-bottom:2px; letter-spacing:.5px; }
+.digit-card .dname { font-size:11px; font-weight:600; color:var(--text-mid); }
 
 /* ── Game selector ── */
-.game-select-list { display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto; }
-.game-option {
-  padding:10px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
-  transition:all .15s; font-size:13px;
+.game-select-list {
+  display:flex; flex-direction:column; gap:5px;
+  max-height:260px; overflow-y:auto;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
 }
-.game-option:hover { border-color:var(--court); background:rgba(51,102,204,0.08); }
-.game-option .go-name { font-weight:600; color:var(--text); }
-.game-option .go-status { font-size:11px; color:var(--text-dim); margin-top:2px; }
+.game-option {
+  padding:11px 13px; border:1px solid var(--border); border-radius:8px; cursor:pointer;
+  transition:all .12s; font-size:13px; background:var(--surface2);
+}
+.game-option:hover { border-color:var(--court-dim); background:rgba(51,102,204,0.06); }
+.game-option.selected-game { border-color:var(--court); background:rgba(51,102,204,0.1); }
+.game-option .go-name { font-weight:600; color:var(--text); font-size:13px; }
+.game-option .go-status { font-size:11px; color:var(--text-dim); margin-top:3px; }
 .game-option.live .go-status { color:#f87171; }
+.game-option .go-badge {
+  font-size:9px; font-weight:700; letter-spacing:.8px; padding:2px 6px;
+  border-radius:4px; flex-shrink:0;
+}
+.go-badge.live-badge { background:rgba(248,113,113,0.15); color:#f87171; border:1px solid rgba(248,113,113,0.2); }
+.go-badge.final-badge { background:var(--surface3); color:var(--text-dim); border:1px solid var(--border); }
 
 .row-flex { display:flex; gap:8px; align-items:flex-end; }
 .row-flex .field { flex:1; }
 
 .section-label {
-  font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
+  font-size:9px; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);
   margin-bottom:8px; font-weight:600;
+}
+
+
+/* ── Unlock button ── */
+.unlock-btn {
+  font-size:10px; padding:3px 9px; border-radius:4px; cursor:pointer;
+  background:transparent; color:var(--text-dim); border:1px solid var(--border);
+  transition:all .15s; font-family:'DM Sans',sans-serif; font-weight:600;
+  letter-spacing:.3px;
+}
+.unlock-btn:hover { color:var(--warn); border-color:var(--warn); background:var(--warn-dim); }
+
+/* ── Section divider ── */
+.section-divider {
+  height:1px; background:linear-gradient(90deg,transparent,var(--border),transparent);
+  margin:16px 0;
+}
+
+/* ── Status badge ── */
+.status-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:3px 8px; border-radius:20px;
+}
+.status-badge.live { background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.2); }
+.status-badge.final { background:var(--surface3); color:var(--text-dim); border:1px solid var(--border); }
+.status-badge.scheduled { background:var(--court-glow); color:var(--court-bright); border:1px solid rgba(51,102,204,0.2); }
+
+/* ── Big winner banner ── */
+.winner-banner {
+  background: linear-gradient(135deg, rgba(34,197,94,0.14), rgba(34,197,94,0.04));
+  border:1px solid rgba(34,197,94,0.3); border-radius:12px;
+  padding:18px; text-align:center; margin:10px 0; position:relative; overflow:hidden;
+}
+.winner-banner::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:1px;
+  background:linear-gradient(90deg,transparent,rgba(34,197,94,0.5),transparent);
+}
+.winner-banner .wb-label { font-size:9px; letter-spacing:1.5px; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px; font-weight:600; }
+.winner-banner .wb-eq { font-size:12px; color:var(--text-dim); margin-bottom:8px; }
+.winner-banner .wb-name { font-family:'Bebas Neue',sans-serif; font-size:40px; color:var(--win); letter-spacing:2px; line-height:1; }
+.winner-banner .wb-sub { font-size:11px; color:var(--text-dim); margin-top:4px; }
+
+/* ── Responsive / Mobile ── */
+@media(max-width:480px) {
+  .score-num { font-size:48px; }
+  .sq-cell { height:44px; font-size:8px; }
+  .inner-tab { padding:9px 12px; font-size:10px; }
+  .topbar-logo { font-size:17px; }
+}
+@media(max-width:360px) {
+  .sq-cell { height:40px; }
+  .score-num { font-size:42px; }
 }
 `;
 
@@ -654,16 +866,15 @@ function SetupPanel({ game, onUpdate, onDelete }) {
               const isSelected = game.espnGameId === g.id;
               return (
                 <div key={g.id}
-                  className={`game-option ${g.inProgress?"live":""}`}
-                  style={isSelected ? {borderColor:"var(--court)",background:"rgba(51,102,204,0.12)"} : {}}
+                  className={`game-option ${g.inProgress?"live":""} ${isSelected?"selected-game":""}`}
                   onClick={() => selectGame(g)}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                     <div className="go-name">
                       {isSelected && <span style={{color:"var(--court-bright)",marginRight:5}}>✓</span>}
                       {g.awayTeam} vs {g.homeTeam}
                     </div>
-                    {g.inProgress && <span style={{fontSize:10,color:"#f87171",fontWeight:700,letterSpacing:.5}}>LIVE</span>}
-                    {g.completed && <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:700}}>FINAL</span>}
+                    {g.inProgress && <span className="go-badge live-badge">LIVE</span>}
+                    {g.completed && <span className="go-badge final-badge">FINAL</span>}
                   </div>
                   <div className="go-status">
                     {g.inProgress ? `🔴 ${g.awayScore}–${g.homeScore}  ·  ${g.shortDetail||g.status}` : g.status}
@@ -807,22 +1018,32 @@ function GridPanel({ game, onUpdate }) {
   return (
     <div>
       <div className="card">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div className="card-title" style={{margin:0}}>
             {game.teamA||"Team A"} vs {game.teamB||"Team B"}
           </div>
+          <div style={{fontSize:11,color:"var(--text-dim)"}}>
+            {game.grid.flat().filter(Boolean).length}/25 filled
+          </div>
         </div>
+        {game.players.length === 0 && (
+          <div style={{fontSize:12,color:"var(--warn)",background:"var(--warn-dim)",borderRadius:6,padding:"8px 12px",marginBottom:12,border:"1px solid rgba(245,158,11,0.2)"}}>
+            ⚠ No players selected — go to Setup → Step 4 to add players, then use Auto-Assign
+          </div>
+        )}
         <div className="grid-wrap">
           <table className="sq-grid">
             <thead>
               <tr>
-                <th style={{width:40}}>
-                  <div style={{fontSize:9,color:"var(--text-dim)"}}>B→<br/>A↓</div>
+                <th style={{width:38}}>
+                  <div style={{fontSize:8,color:"var(--text-dim)",lineHeight:1.3,padding:2}}>
+                    <span style={{color:"var(--court-bright)"}}>{game.teamA?makeAbbr(game.teamA):"A"}</span>→<br/>
+                    <span style={{color:"var(--text-mid)"}}>{game.teamB?makeAbbr(game.teamB):"B"}</span>↓
+                  </div>
                 </th>
                 {(game.colPairs||[]).map((pair,i)=>(
                   <th key={i}>
                     <div className="col-header">{pair[0]}/{pair[1]}</div>
-                    <div style={{fontSize:9,color:"var(--text-dim)",marginTop:1}}>{game.teamA?makeAbbr(game.teamA):"A"}</div>
                   </th>
                 ))}
               </tr>
@@ -832,13 +1053,12 @@ function GridPanel({ game, onUpdate }) {
                 <tr key={rowIdx}>
                   <th>
                     <div className="col-header">{pair[0]}/{pair[1]}</div>
-                    <div style={{fontSize:9,color:"var(--text-dim)"}}>{game.teamB?makeAbbr(game.teamB):"B"}</div>
                   </th>
                   {(game.colPairs||[]).map((_pair, colIdx)=>(
                     <td key={colIdx}
                       className={cellClass(rowIdx,colIdx)}
                       onClick={()=>setAssignCell([rowIdx,colIdx])}>
-                      {game.grid[rowIdx][colIdx] || "·"}
+                      {game.grid[rowIdx][colIdx] || "+"}
                     </td>
                   ))}
                 </tr>
@@ -907,7 +1127,7 @@ function ScoresPanel({ game, onUpdate, onToast }) {
       const url = dateStr
         ? `${BACKEND}/scores?sport=${sport}&dates=${dateStr}`
         : `${BACKEND}/scores?sport=${sport}`;
-      setBotStatus(`Fetching... date=${dateStr||"today"} id=${game.espnGameId||"none"}`);
+      setBotStatus("Fetching scores…");
       const res = await fetch(url);
       const data = await res.json();
       const games = data.games || [];
@@ -1006,8 +1226,18 @@ function ScoresPanel({ game, onUpdate, onToast }) {
   return (
     <div>
       {/* Score Bot */}
-      <div className="card">
-        <div className="card-title">Score Bot</div>
+      <div className="live-score-card">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div className="card-title" style={{margin:0}}>Score Bot</div>
+          {botLive && (
+            <span className="status-badge live">
+              <span className="pulse"></span> LIVE
+            </span>
+          )}
+          {botStatus?.includes("Final") && (
+            <span className="status-badge final">FINAL</span>
+          )}
+        </div>
         <div className="bot-header">
           {!botRunning ? (
             <button className="btn btn-primary btn-sm" onClick={startBot} disabled={!game.teamA}>▶ Start Bot</button>
@@ -1015,35 +1245,32 @@ function ScoresPanel({ game, onUpdate, onToast }) {
             <button className="btn btn-secondary btn-sm" onClick={stopBot}>■ Stop</button>
           )}
           {botRunning && (
-            <button className="btn btn-secondary btn-sm" onClick={fetchScores}>↻ Now</button>
+            <button className="btn btn-secondary btn-sm" onClick={fetchScores}>↻ Refresh</button>
           )}
-          <div className={`bot-status ${botLive?"live":""}`}>
-            {botLive && <span className="pulse" style={{marginRight:4}}></span>}
-            {botStatus || (game.teamA ? `Ready — tracking ${game.teamA} vs ${game.teamB}${game.gameDate ? " · "+game.gameDate : ""}` : "Select a game in Setup first")}
+          <div className={`bot-status ${botLive?"live":""}`} style={{flex:1,fontSize:11}}>
+            {botStatus || (game.teamA ? `Ready — ${game.teamA} vs ${game.teamB}` : "Select a game in Setup first")}
           </div>
         </div>
 
-        {botStatus && botStatus.includes("EDT") || botStatus.includes("EST") || botStatus.includes("CT") || botStatus.includes("PT") || (scoreA > 0 || scoreB > 0) ? (
+        {(scoreA > 0 || scoreB > 0) ? (
           <div className="score-display" style={{marginTop:12}}>
-            {scoreA === 0 && scoreB === 0 && botStatus && (botStatus.includes("EDT")||botStatus.includes("EST")||botStatus.includes("CT")||botStatus.includes("PT")) ? (
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:12,color:"var(--text-dim)",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Scheduled</div>
-                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"var(--court-bright)",letterSpacing:1}}>{botStatus.split("·")[0].trim()}</div>
-                <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>Tracking — scores will appear at tip-off</div>
-              </div>
-            ) : (
-              <>
-                <div className="score-team">
-                  <div className="score-team-name">{game.teamA||"Team A"}</div>
-                  <div className="score-num">{scoreA}</div>
-                </div>
-                <div className="score-sep">–</div>
-                <div className="score-team">
-                  <div className="score-team-name">{game.teamB||"Team B"}</div>
-                  <div className="score-num">{scoreB}</div>
-                </div>
-              </>
-            )}
+            <div className="score-team">
+              <div className="score-team-name">{game.teamA||"Team A"}</div>
+              <div className="score-num">{scoreA}</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+              <div className="score-sep">–</div>
+              {botStatus && <div style={{fontSize:10,color:"var(--text-dim)",letterSpacing:.5,textAlign:"center",maxWidth:80,lineHeight:1.3}}>{botStatus.split("·")[0].trim()}</div>}
+            </div>
+            <div className="score-team">
+              <div className="score-team-name">{game.teamB||"Team B"}</div>
+              <div className="score-num">{scoreB}</div>
+            </div>
+          </div>
+        ) : botRunning ? (
+          <div style={{textAlign:"center",padding:"16px",color:"var(--text-dim)",fontSize:12,marginTop:8}}>
+            <div style={{fontSize:28,marginBottom:6}}>⏳</div>
+            Waiting for game to start…
           </div>
         ) : null}
       </div>
@@ -1079,19 +1306,21 @@ function ScoresPanel({ game, onUpdate, onToast }) {
         </div>
 
         {liveWinner ? (
-          <div className="winner-preview">
-            <div className="label">Winner if locked now</div>
-            <div className="name">🏆 {liveWinner}</div>
+          <div className="winner-banner">
+            <div className="wb-label">Winner if locked now</div>
+            <div className="wb-eq">…{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)",fontSize:14}}>{(scoreA+scoreB)%10}</strong></div>
+            <div className="wb-name">🏆 {liveWinner}</div>
           </div>
         ) : (
-          <div style={{fontSize:12,color:"var(--text-dim)",textAlign:"center",padding:"10px 0"}}>
-            Digits: {scoreA%10} + {scoreB%10} = {(scoreA+scoreB)%10} — no matching square yet
+          <div style={{textAlign:"center",padding:"14px 0",color:"var(--text-dim)",fontSize:13,background:"var(--surface2)",borderRadius:8,margin:"8px 0"}}>
+            …{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)"}}>{(scoreA+scoreB)%10}</strong>
+            <div style={{fontSize:11,marginTop:4,color:"var(--text-dim)"}}>No matching square assigned for digit {(scoreA+scoreB)%10}</div>
           </div>
         )}
 
-        <button className="btn btn-win" style={{width:"100%",marginTop:8}}
+        <button className="btn btn-win" style={{width:"100%",marginTop:10,padding:"12px",fontSize:14}}
           onClick={lockPeriod} disabled={lockedPeriods.has(currentQ)}>
-          {lockedPeriods.has(currentQ) ? `${getPeriodLabel(game,currentQ)} Locked ✓` : `🔒 Lock ${getPeriodLabel(game,currentQ)}`}
+          {lockedPeriods.has(currentQ) ? `✓ ${getPeriodLabel(game,currentQ)} Already Locked` : `🔒 Lock ${getPeriodLabel(game,currentQ)}`}
         </button>
       </div>
     </div>
@@ -1099,10 +1328,15 @@ function ScoresPanel({ game, onUpdate, onToast }) {
 }
 
 // ─── History Panel ────────────────────────────────────────────────────────────
-function HistoryPanel({ game }) {
+function HistoryPanel({ game, onUpdate }) {
   if (!game.results.length) return (
-    <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">No results locked yet</div></div>
+    <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">No results locked yet.<br/>Lock a period in the Scores tab.</div></div>
   );
+
+  const unlockPeriod = (quarter) => {
+    onUpdate({ results: game.results.filter(r => r.quarter !== quarter) });
+  };
+
   return (
     <div className="card">
       <div className="card-title">Results History</div>
@@ -1111,9 +1345,13 @@ function HistoryPanel({ game }) {
           <div className="result-period">{getPeriodLabel(game,r.quarter)}</div>
           <div className="result-score">{r.scoreA}–{r.scoreB}</div>
           <div className="result-name">{r.winnerName}</div>
-          <div className="result-digits">…{r.digitA}+…{r.digitB}={(r.digitA+r.digitB)%10}</div>
+          <div className="result-digits" style={{marginRight:8}}>…{r.digitA}+…{r.digitB}={(r.digitA+r.digitB)%10}</div>
+          <button className="unlock-btn" onClick={() => unlockPeriod(r.quarter)} title="Unlock to re-enter">↩ Unlock</button>
         </div>
       ))}
+      <div style={{fontSize:11,color:"var(--text-dim)",marginTop:12,padding:"8px 0",borderTop:"1px solid var(--border)"}}>
+        Tap Unlock to correct a result — this removes the lock so you can re-enter the score.
+      </div>
     </div>
   );
 }
@@ -1124,9 +1362,15 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div className="inner-tabs">
-        {["setup","grid","scores","players","history"].map(t=>(
-          <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={()=>setTab(t)}>
-            {t}
+        {[
+          {id:"setup",   label:"Setup",   icon:"⚙"},
+          {id:"grid",    label:"Grid",    icon:"⬜"},
+          {id:"scores",  label:"Live",    icon:"📡"},
+          {id:"players", label:"Players", icon:"👥"},
+          {id:"history", label:"History", icon:"📋"},
+        ].map(t=>(
+          <div key={t.id} className={`inner-tab ${tab===t.id?"active":""}`} onClick={()=>setTab(t.id)}>
+            <span style={{fontSize:13}}>{t.icon}</span> {t.label}
           </div>
         ))}
       </div>
@@ -1135,7 +1379,7 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
         {tab==="grid"    && <GridPanel game={game} onUpdate={onUpdate} />}
         {tab==="scores"  && <ScoresPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
         {tab==="players" && <PlayersPanel />}
-        {tab==="history" && <HistoryPanel game={game} />}
+        {tab==="history" && <HistoryPanel game={game} onUpdate={onUpdate} />}
       </div>
     </div>
   );
@@ -1637,21 +1881,31 @@ function TOBoardPanel({ game, onUpdate, onToast }) {
 
                 {locked ? (
                   <>
-                    <div style={{fontSize:12,color:"var(--text-dim)",minWidth:60}}>
+                    <div style={{fontSize:12,color:"var(--text-dim)",minWidth:56,fontVariantNumeric:"tabular-nums"}}>
                       {res.scoreA}–{res.scoreB}
                     </div>
                     <div style={{fontSize:11,color:"var(--text-dim)",minWidth:52}}>
                       …{res.scoreA%10}+…{res.scoreB%10}={res.digit}
                     </div>
                     <div style={{flex:1,fontWeight:700,color:"var(--win)",fontSize:13}}>
-                      {res.winner || "—"}
+                      {res.winner || <span style={{color:"var(--text-dim)"}}>—</span>}
                     </div>
                     <div onClick={() => togglePaid(slot.id)}
-                      style={{cursor:"pointer",fontSize:11,color:res.paid?"var(--win)":"var(--text-dim)",
+                      style={{cursor:"pointer",fontSize:11,
+                        color:res.paid?"var(--win)":"var(--text-dim)",
                         border:"1px solid",borderColor:res.paid?"var(--win)":"var(--border)",
-                        borderRadius:4,padding:"2px 7px",userSelect:"none",flexShrink:0}}>
+                        borderRadius:4,padding:"2px 8px",userSelect:"none",flexShrink:0,
+                        background:res.paid?"var(--win-dim)":"transparent",transition:"all .15s"}}>
                       {res.paid ? "✓ Paid" : "Unpaid"}
                     </div>
+                    <button className="unlock-btn" style={{marginLeft:4}}
+                      onClick={() => {
+                        const updated = { ...game.results };
+                        delete updated[slot.id];
+                        onUpdate({ results: updated });
+                        onToast(`↩ ${slot.label} unlocked`);
+                      }}
+                      title="Unlock to correct">↩</button>
                   </>
                 ) : res?.pending ? (
                   // Bot found this TV timeout — show score + projected winner, ready to lock
@@ -1700,14 +1954,25 @@ function TOBoardPanel({ game, onUpdate, onToast }) {
           <div className="card-title">Leaderboard</div>
           {Object.entries(winCounts)
             .sort((a,b) => b[1]-a[1])
-            .map(([player, wins]) => {
+            .map(([player, wins], idx) => {
               const digit = Object.entries(game.assignments).find(([,p])=>p===player)?.[0];
+              const isLeader = wins > 0 && idx === 0;
               return (
-                <div key={player} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"var(--court-bright)",minWidth:28}}>{digit ?? "?"}</div>
-                  <div style={{flex:1,fontWeight:600}}>{player}</div>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:wins>0?"var(--win)":"var(--text-dim)"}}>
-                    {wins} win{wins!==1?"s":""}
+                <div key={player} style={{
+                  display:"flex",alignItems:"center",gap:10,padding:"10px 0",
+                  borderBottom:"1px solid var(--border)",
+                  background: isLeader ? "rgba(34,197,94,0.04)" : "transparent",
+                  margin: isLeader ? "0 -16px" : undefined, padding: isLeader ? "10px 16px" : "10px 0"
+                }}>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"var(--court-bright)",minWidth:28,textAlign:"center"}}>{digit ?? "?"}</div>
+                  <div style={{flex:1,fontWeight:600,color: isLeader ? "var(--text)" : "var(--text-mid)"}}>{player}</div>
+                  <div style={{
+                    fontFamily:"'Bebas Neue',sans-serif",fontSize:18,
+                    color:wins>0?"var(--win)":"var(--text-dim)",
+                    display:"flex",alignItems:"center",gap:4
+                  }}>
+                    {isLeader && wins > 0 && <span style={{fontSize:14}}>🏆</span>}
+                    {wins} <span style={{fontSize:11,fontFamily:"'DM Sans',sans-serif",fontWeight:400}}>win{wins!==1?"s":""}</span>
                   </div>
                 </div>
               );
@@ -1802,7 +2067,7 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
   return (
     <div>
       {/* Live Score Bot */}
-      <div className="card">
+      <div className="live-score-card">
         <div className="card-title">Live Score Bot</div>
         <div className="bot-header">
           {!botRunning
@@ -1827,12 +2092,10 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
         </div>
 
         {/* Live projected winner */}
-        <div className="winner-preview">
-          <div className="label">Live projected winner</div>
-          <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:4}}>
-            …{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)"}}>{liveDigit}</strong>
-          </div>
-          <div className="name" style={{fontSize:22}}>
+        <div className="winner-banner">
+          <div className="wb-label">Live projected winner</div>
+          <div className="wb-eq">…{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)",fontSize:14}}>{liveDigit}</strong></div>
+          <div className="wb-name" style={{fontSize: liveWinner ? 38 : 24, color: liveWinner ? "var(--win)" : "var(--text-dim)"}}>
             {liveWinner ? `🏆 ${liveWinner}` : `Digit ${liveDigit} — unassigned`}
           </div>
         </div>
@@ -1878,13 +2141,11 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
               </div>
             </div>
 
-            <div className="winner-preview" style={{margin:"10px 0"}}>
-              <div className="label">Winner if locked now</div>
-              <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:4}}>
-                …{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)"}}>{calcDigit(scoreA,scoreB)}</strong>
-              </div>
-              <div className="name" style={{fontSize:20}}>
-                {liveWinner ? `🏆 ${liveWinner}` : `Digit ${liveDigit} — unassigned`}
+            <div className="winner-banner" style={{margin:"10px 0"}}>
+              <div className="wb-label">Winner if locked now</div>
+              <div className="wb-eq">…{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)",fontSize:14}}>{calcDigit(scoreA,scoreB)}</strong></div>
+              <div className="wb-name" style={{fontSize: game.assignments[calcDigit(scoreA,scoreB)] ? 34 : 20, color: game.assignments[calcDigit(scoreA,scoreB)] ? "var(--win)" : "var(--text-dim)"}}>
+                {game.assignments[calcDigit(scoreA,scoreB)] ? `🏆 ${game.assignments[calcDigit(scoreA,scoreB)]}` : `Digit ${calcDigit(scoreA,scoreB)} — unassigned`}
               </div>
             </div>
 
@@ -2139,10 +2400,15 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div className="inner-tabs">
-        {["setup","board","live","players"].map(t => (
-          <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={() => setTab(t)}>
-            {t}
-            {t==="live" && botRunning && <span style={{marginLeft:5,color:"var(--win)",fontSize:9}}>●</span>}
+        {[
+          {id:"setup",   label:"Setup",   icon:"⚙"},
+          {id:"board",   label:"Board",   icon:"🎯"},
+          {id:"live",    label:"Live",    icon:"📡"},
+          {id:"players", label:"Players", icon:"👥"},
+        ].map(t => (
+          <div key={t.id} className={`inner-tab ${tab===t.id?"active":""}`} onClick={() => setTab(t.id)}>
+            <span style={{fontSize:13}}>{t.icon}</span> {t.label}
+            {t.id==="live" && botRunning && <span style={{marginLeft:4,color:"var(--win)",fontSize:9}}>●</span>}
           </div>
         ))}
       </div>
