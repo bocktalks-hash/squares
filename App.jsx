@@ -85,6 +85,7 @@ function makeNewGame(id) {
     currentQuarter:1,
     sport:"nba",
     espnGameId: null,
+    gameDate: null,
     botQuery:"",
     botRunning:false,
     botIntervalMins:10,
@@ -507,6 +508,7 @@ function SetupPanel({ game, onUpdate, onDelete }) {
       name: tabName,
       nameManual: false,
       espnGameId: g.id,
+      gameDate: selectedDate,   // store the date the game was picked from
       botQuery: g.shortName || g.name,
     });
   };
@@ -812,10 +814,15 @@ function ScoresPanel({ game, onUpdate, onToast }) {
     }
     try {
       const sport = SPORT_CONFIG[game.sport].path;
-      const res = await fetch(`${BACKEND}/scores?sport=${sport}`);
+      // Always fetch using the game's scheduled date so it works day-before setup
+      const dateStr = game.gameDate ? game.gameDate.replace(/-/g,"") : "";
+      const url = dateStr
+        ? `${BACKEND}/scores?sport=${sport}&dates=${dateStr}`
+        : `${BACKEND}/scores?sport=${sport}`;
+      const res = await fetch(url);
       const data = await res.json();
       const games = data.games || [];
-      // Prefer matching by ESPN game ID (set during setup), fall back to team name fuzzy match
+      // Match by ESPN game ID first (most reliable), fall back to team name
       let found = game.espnGameId ? games.find(g => g.id === game.espnGameId) : null;
       if (!found) {
         const teamAl = (game.teamA||"").toLowerCase();
@@ -907,7 +914,7 @@ function ScoresPanel({ game, onUpdate, onToast }) {
         <div className="card-title">Score Bot</div>
         <div className="bot-header">
           {!botRunning ? (
-            <button className="btn btn-primary btn-sm" onClick={startBot}>▶ Start Bot</button>
+            <button className="btn btn-primary btn-sm" onClick={startBot} disabled={!game.teamA}>▶ Start Bot</button>
           ) : (
             <button className="btn btn-secondary btn-sm" onClick={stopBot}>■ Stop</button>
           )}
@@ -916,7 +923,7 @@ function ScoresPanel({ game, onUpdate, onToast }) {
           )}
           <div className={`bot-status ${botLive?"live":""}`}>
             {botLive && <span className="pulse" style={{marginRight:4}}></span>}
-            {botStatus}
+            {botStatus || (game.teamA ? `Ready — tracking ${game.teamA} vs ${game.teamB}${game.gameDate ? " · "+game.gameDate : ""}` : "Select a game in Setup first")}
           </div>
         </div>
 
