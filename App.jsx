@@ -434,7 +434,12 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const [espnGames, setEspnGames] = useState([]);
   const [espnLoading, setEspnLoading] = useState(false);
   const [espnError, setEspnError] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  // Get today's date in local timezone (avoids UTC shifting the date back)
+  const todayLocal = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+  const [selectedDate, setSelectedDate] = useState(todayLocal());
 
   // Auto-load games whenever sport or date changes
   useEffect(() => {
@@ -445,6 +450,7 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const loadGames = async () => {
     setEspnLoading(true); setEspnError(""); setEspnGames([]);
     try {
+      // Use the date string directly — no UTC conversion
       const dateStr = selectedDate.replace(/-/g,"");
       const sport = SPORT_CONFIG[game.sport].path;
       const res = await fetch(`${BACKEND}/scores?sport=${sport}&dates=${dateStr}`);
