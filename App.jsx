@@ -1328,37 +1328,35 @@ export default function App() {
         </div>
 
         {/* Squares mode */}
-        {mode === "squares" && (
-          <>
-            <div className="main-area">
-              {activeGame && (
-                <GameView
-                  key={activeGame.id}
-                  game={activeGame}
-                  onUpdate={patch=>updateGame(activeGame.id, patch)}
-                  onToast={msg=>setToast(msg)}
-                  onDelete={()=>removeGame(activeGame.id)}
-                />
-              )}
-            </div>
-            <div className="tab-bar">
-              {games.map(g=>(
-                <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
-                  {tabLabel(g)}
-                  {games.length>1 && (
-                    <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
-                  )}
-                </div>
-              ))}
-              <div className="tab-add" onClick={addGame} title="Add game">＋</div>
-            </div>
-          </>
-        )}
+        <div style={{display: mode === "squares" ? "contents" : "none"}}>
+          <div className="main-area">
+            {activeGame && (
+              <GameView
+                key={activeGame.id}
+                game={activeGame}
+                onUpdate={patch=>updateGame(activeGame.id, patch)}
+                onToast={msg=>setToast(msg)}
+                onDelete={()=>removeGame(activeGame.id)}
+              />
+            )}
+          </div>
+          <div className="tab-bar">
+            {games.map(g=>(
+              <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
+                {tabLabel(g)}
+                {games.length>1 && (
+                  <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
+                )}
+              </div>
+            ))}
+            <div className="tab-add" onClick={addGame} title="Add game">＋</div>
+          </div>
+        </div>
 
-        {/* Timeout mode */}
-        {mode === "timeout" && (
+        {/* Timeout mode — always mounted so bots keep running when switching modes */}
+        <div style={{display: mode === "timeout" ? "contents" : "none"}}>
           <TimeoutApp onToast={msg=>setToast(msg)} />
-        )}
+        </div>
       </div>
 
       {toast && <Toast msg={toast} onDone={()=>setToast(null)} />}
