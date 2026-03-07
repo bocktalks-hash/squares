@@ -49,6 +49,18 @@ const TEAM_ABBR = {
   "michigan state":"MSU","florida":"FLA","lsu":"LSU","texas tech":"TTU","ttu":"TTU",
   "west virginia":"WVU","iowa state":"IAST","oklahoma":"OU","virginia":"UVA",
   "rutgers":"RUTG","penn state":"PSU","stanford":"STAN","arizona":"ARIZ","oregon":"ORE",
+  "nebraska":"NEB","wisconsin":"WIS","minnesota":"MINN","northwestern":"NW","ohio":"OHIO",
+  "notre dame":"ND","butler":"BUT","xavier":"XAV","dayton":"DAY","cincinnati":"CIN",
+  "miami":"MIA","florida state":"FSU","wake forest":"WAKE","duke blue devils":"DUKE",
+  "north carolina state":"NCST","nc state":"NCST","syracuse":"SYR","pittsburgh":"PITT",
+  "pitt":"PITT","louisville":"LOU","clemson":"CLEM","georgia tech":"GT","virginia tech":"VT",
+  "colorado":"COLO","utah":"UTAH","washington":"WASH","california":"CAL","usc":"USC",
+  "san diego state":"SDSU","nevada":"NEV","boise state":"BSU","utah state":"USU",
+  "new mexico":"UNM","fresno state":"FRES","wyoming":"WYO","air force":"AFA",
+  "saint mary":"SMC","st mary":"SMC","memphis":"MEM","wichita state":"WICH",
+  "tulsa":"TULSA","east carolina":"ECU","south florida":"USF","temple":"TEM",
+  "ole miss":"MISS","mississippi":"MISS","mississippi state":"MSST","vanderbilt":"VAN",
+  "south carolina":"SCAR","missouri":"MIZZ","kentucky wildcats":"UK",
 };
 
 function makeAbbr(name) {
@@ -934,19 +946,29 @@ function ScoresPanel({ game, onUpdate, onToast }) {
           </div>
         </div>
 
-        {(scoreA > 0 || scoreB > 0) && (
+        {botStatus && botStatus.includes("EDT") || botStatus.includes("EST") || botStatus.includes("CT") || botStatus.includes("PT") || (scoreA > 0 || scoreB > 0) ? (
           <div className="score-display" style={{marginTop:12}}>
-            <div className="score-team">
-              <div className="score-team-name">{game.teamA||"Team A"}</div>
-              <div className="score-num">{scoreA}</div>
-            </div>
-            <div className="score-sep">–</div>
-            <div className="score-team">
-              <div className="score-team-name">{game.teamB||"Team B"}</div>
-              <div className="score-num">{scoreB}</div>
-            </div>
+            {scoreA === 0 && scoreB === 0 && botStatus && (botStatus.includes("EDT")||botStatus.includes("EST")||botStatus.includes("CT")||botStatus.includes("PT")) ? (
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:12,color:"var(--text-dim)",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Scheduled</div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"var(--court-bright)",letterSpacing:1}}>{botStatus.split("·")[0].trim()}</div>
+                <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>Tracking — scores will appear at tip-off</div>
+              </div>
+            ) : (
+              <>
+                <div className="score-team">
+                  <div className="score-team-name">{game.teamA||"Team A"}</div>
+                  <div className="score-num">{scoreA}</div>
+                </div>
+                <div className="score-sep">–</div>
+                <div className="score-team">
+                  <div className="score-team-name">{game.teamB||"Team B"}</div>
+                  <div className="score-num">{scoreB}</div>
+                </div>
+              </>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Manual Entry */}
