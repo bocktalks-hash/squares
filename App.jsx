@@ -3,6 +3,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BACKEND = "https://squares-backend-production.up.railway.app";
 const STORAGE_KEY = "squares_app_v2";
+const ROSTER_KEY = "squares_roster_v1";
+
+function loadRoster() {
+  try { return JSON.parse(localStorage.getItem(ROSTER_KEY) || "[]"); } catch { return []; }
+}
+function saveRoster(roster) {
+  try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch {}
+}
 
 // Shuffle helper
 function shuffle(arr) {
@@ -373,6 +381,27 @@ html, body, #root { height:100%; background:var(--bg); color:var(--text); font-f
   .sq-cell { width:48px; height:44px; font-size:9px; }
 }
 
+/* ── Roster picker ── */
+.roster-picker {
+  border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:10px;
+  max-height:220px; overflow-y:auto;
+}
+.roster-row {
+  display:flex; align-items:center; gap:10px; padding:9px 12px;
+  border-bottom:1px solid var(--border); cursor:pointer; transition:background .12s;
+  font-size:13px;
+}
+.roster-row:last-child { border-bottom:none; }
+.roster-row:hover { background:var(--surface2); }
+.roster-row.in-game { background:rgba(51,102,204,0.08); }
+.roster-check { width:16px; height:16px; border-radius:4px; border:2px solid var(--border);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:10px; }
+.roster-check.checked { background:var(--court); border-color:var(--court); color:#fff; }
+.roster-name { flex:1; }
+.roster-del { color:var(--text-dim); font-size:16px; padding:0 4px; opacity:0; transition:opacity .12s; }
+.roster-row:hover .roster-del { opacity:1; }
+.roster-del:hover { color:var(--danger); }
+
 /* ── Digit assignment display ── */
 .digit-assign { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .digit-card {
@@ -447,14 +476,37 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const [espnGames, setEspnGames] = useState([]);
   const [espnLoading, setEspnLoading] = useState(false);
   const [espnError, setEspnError] = useState("");
+  const [roster, setRoster] = useState(() => loadRoster());
   const dateInputRef = useRef(null);
 
   const formatDisplayDate = (dateStr) => {
     if (!dateStr) return "Pick a date";
-    // Parse YYYY-MM-DD without timezone conversion
     const [y, m, d] = dateStr.split("-");
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+  };
+
+  const updateRoster = (newRoster) => {
+    setRoster(newRoster);
+    saveRoster(newRoster);
+  };
+
+  // Toggle a roster player in/out of this game
+  const togglePlayer = (p) => {
+    if (game.players.includes(p)) {
+      onUpdate({ players: game.players.filter(x => x !== p) });
+    } else {
+      onUpdate({ players: [...game.players, p] });
+    }
+  };
+
+  // Delete from roster entirely
+  const deleteFromRoster = (p) => {
+    updateRoster(roster.filter(x => x !== p));
+    // Also remove from this game if present
+    if (game.players.includes(p)) {
+      onUpdate({ players: game.players.filter(x => x !== p) });
+    }
   };
   // Get today's date in local timezone (avoids UTC shifting the date back)
   const todayLocal = () => {
@@ -488,8 +540,15 @@ function SetupPanel({ game, onUpdate, onDelete }) {
 
   const addPlayer = () => {
     const p = newPlayer.trim();
-    if (!p || game.players.includes(p)) return;
-    onUpdate({ players:[...game.players, p] });
+    if (!p) return;
+    // Add to global roster if not already there
+    if (!roster.includes(p)) {
+      updateRoster([...roster, p]);
+    }
+    // Add to this game if not already there
+    if (!game.players.includes(p)) {
+      onUpdate({ players:[...game.players, p] });
+    }
     setNewPlayer("");
   };
 
@@ -647,22 +706,63 @@ function SetupPanel({ game, onUpdate, onDelete }) {
       {gameSelected && (
         <div className="card">
           <div className="card-title">Step 4 — Add Players</div>
-          <div className="player-list">
-            {game.players.map(p=>(
-              <span key={p} className="player-chip">
-                {p} <span className="rm" onClick={()=>removePlayer(p)}>×</span>
-              </span>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:8,marginBottom:10}}>
+
+          {/* Search / add input — filters roster as you type */}
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
             <input
-              style={{flex:1,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:6,padding:"8px 12px",color:"var(--text)",outline:"none",fontSize:14,fontFamily:"'DM Sans',sans-serif"}}
-              placeholder="Add player name..."
+              style={{flex:1,background:"var(--surface2)",border:"1px solid var(--court)",borderRadius:6,padding:"8px 12px",color:"var(--text)",outline:"none",fontSize:14,fontFamily:"'DM Sans',sans-serif"}}
+              placeholder={roster.length > 0 ? "Search or add new player..." : "Type a name and press Add..."}
               value={newPlayer}
               onChange={e=>setNewPlayer(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&addPlayer()} />
             <button className="btn btn-primary" onClick={addPlayer}>Add</button>
           </div>
+
+          {/* Filtered roster list */}
+          {(() => {
+            const filtered = roster.filter(p =>
+              newPlayer.trim() === "" || p.toLowerCase().includes(newPlayer.toLowerCase())
+            );
+            return filtered.length > 0 ? (
+              <div className="roster-picker">
+                {filtered.map(p => {
+                  const inGame = game.players.includes(p);
+                  return (
+                    <div key={p} className={`roster-row ${inGame?"in-game":""}`}
+                      onClick={() => togglePlayer(p)}>
+                      <div className={`roster-check ${inGame?"checked":""}`}>
+                        {inGame && "✓"}
+                      </div>
+                      <div className="roster-name">
+                        {/* Highlight matching part */}
+                        {newPlayer.trim() ? (() => {
+                          const idx = p.toLowerCase().indexOf(newPlayer.toLowerCase());
+                          if (idx === -1) return p;
+                          return <>
+                            {p.slice(0, idx)}
+                            <span style={{color:"var(--court-bright)",fontWeight:700}}>{p.slice(idx, idx+newPlayer.length)}</span>
+                            {p.slice(idx+newPlayer.length)}
+                          </>;
+                        })() : p}
+                      </div>
+                      <div className="roster-del" onClick={e=>{e.stopPropagation();deleteFromRoster(p);}}>×</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : newPlayer.trim() && !roster.includes(newPlayer.trim()) ? (
+              <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:8,padding:"6px 2px"}}>
+                Press <strong style={{color:"var(--court-bright)"}}>Add</strong> to create "{newPlayer.trim()}" and save to your roster
+              </div>
+            ) : null;
+          })()}
+
+          {game.players.length > 0 && (
+            <div style={{fontSize:11,color:"var(--text-dim)",marginBottom:10}}>
+              {game.players.length} player{game.players.length!==1?"s":""} in this game: {game.players.join(", ")}
+            </div>
+          )}
+
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-secondary btn-sm" onClick={autoAssign} disabled={!game.players.length}>
               Auto-Assign Grid
