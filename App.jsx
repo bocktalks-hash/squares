@@ -1280,43 +1280,791 @@ export default function App() {
 
   const tabLabel = (g) => g.name || (g.teamA && g.teamB ? autoTabName(g.teamA,g.teamB) : `Game ${g.id}`);
 
+  const [mode, setMode] = useState("squares"); // "squares" | "timeout"
+
   return (
     <>
-      <style>{css}</style>
+      <style>{css + `
+        /* ── Mode switcher ── */
+        .mode-switcher { display:flex; gap:2px; background:var(--surface2); border-radius:8px; padding:3px; margin-left:auto; }
+        .mode-btn {
+          padding:5px 14px; border-radius:6px; font-size:11px; font-weight:700; letter-spacing:.6px;
+          text-transform:uppercase; cursor:pointer; transition:all .15s; color:var(--text-dim); border:none;
+          background:transparent; font-family:'DM Sans',sans-serif;
+        }
+        .mode-btn.active { background:var(--court); color:#fff; }
+        .mode-btn:hover:not(.active) { color:var(--text); }
+
+        /* ── Roster picker ── */
+        .roster-picker { display:flex; flex-direction:column; gap:4px; max-height:280px; overflow-y:auto;
+          scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+        .roster-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:6px;
+          cursor:pointer; transition:background .12s; border:1px solid transparent; }
+        .roster-row:hover { background:var(--surface2); }
+        .roster-row.in-game { border-color:var(--court-dim); background:rgba(51,102,204,0.06); }
+        .roster-check { width:18px; height:18px; border-radius:4px; border:1px solid var(--border);
+          display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+          flex-shrink:0; color:var(--court-bright); }
+        .roster-check.checked { background:var(--court); border-color:var(--court); color:#fff; }
+        .roster-name { font-size:13px; font-weight:500; }
+
+        /* ── TO topbar subtitle ── */
+        .topbar-subtitle { font-size:11px; color:var(--text-dim); letter-spacing:.8px; text-transform:uppercase; margin-left:2px; margin-top:2px; }
+      `}</style>
       <div className="app-shell">
         {/* Top Bar */}
         <div className="topbar">
-          <div className="topbar-logo"><img src="/logo.svg" alt="Bock Talks logo" />Bock Talks <span>Squares</span></div>
+          <div style={{display:"flex",flexDirection:"column",lineHeight:1}}>
+            <div className="topbar-logo">
+              <img src="/logo.svg" alt="Bock Talks logo" />
+              Bock Talks <span>{mode === "squares" ? "Squares" : "Timeout"}</span>
+            </div>
+          </div>
+          {/* Mode Switcher */}
+          <div className="mode-switcher">
+            <button className={`mode-btn ${mode==="squares"?"active":""}`} onClick={() => setMode("squares")}>⬛ Squares</button>
+            <button className={`mode-btn ${mode==="timeout"?"active":""}`} onClick={() => setMode("timeout")}>⏱ Timeout</button>
+          </div>
         </div>
 
-        {/* Main */}
-        <div className="main-area">
-          {activeGame && (
-            <GameView
-              key={activeGame.id}
-              game={activeGame}
-              onUpdate={patch=>updateGame(activeGame.id, patch)}
-              onToast={msg=>setToast(msg)}
-              onDelete={()=>removeGame(activeGame.id)}
-            />
-          )}
-        </div>
-
-        {/* Game Tab Bar */}
-        <div className="tab-bar">
-          {games.map(g=>(
-            <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
-              {tabLabel(g)}
-              {games.length>1 && (
-                <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
+        {/* Squares mode */}
+        {mode === "squares" && (
+          <>
+            <div className="main-area">
+              {activeGame && (
+                <GameView
+                  key={activeGame.id}
+                  game={activeGame}
+                  onUpdate={patch=>updateGame(activeGame.id, patch)}
+                  onToast={msg=>setToast(msg)}
+                  onDelete={()=>removeGame(activeGame.id)}
+                />
               )}
             </div>
-          ))}
-          <div className="tab-add" onClick={addGame} title="Add game">＋</div>
-        </div>
+            <div className="tab-bar">
+              {games.map(g=>(
+                <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
+                  {tabLabel(g)}
+                  {games.length>1 && (
+                    <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
+                  )}
+                </div>
+              ))}
+              <div className="tab-add" onClick={addGame} title="Add game">＋</div>
+            </div>
+          </>
+        )}
+
+        {/* Timeout mode */}
+        {mode === "timeout" && (
+          <TimeoutApp onToast={msg=>setToast(msg)} />
+        )}
       </div>
 
       {toast && <Toast msg={toast} onDone={()=>setToast(null)} />}
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIMEOUT GAME
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const TO_STORAGE_KEY = "timeout_app_v1";
+const TIMEOUT_SLOTS = [
+  { id:"h1_16", half:1, label:"16:00", shortLabel:"1H·16" },
+  { id:"h1_12", half:1, label:"12:00", shortLabel:"1H·12" },
+  { id:"h1_8",  half:1, label:"8:00",  shortLabel:"1H·8"  },
+  { id:"h1_4",  half:1, label:"4:00",  shortLabel:"1H·4"  },
+  { id:"h1_0",  half:1, label:"Half",  shortLabel:"Half"  },
+  { id:"h2_16", half:2, label:"16:00", shortLabel:"2H·16" },
+  { id:"h2_12", half:2, label:"12:00", shortLabel:"2H·12" },
+  { id:"h2_8",  half:2, label:"8:00",  shortLabel:"2H·8"  },
+  { id:"h2_4",  half:2, label:"4:00",  shortLabel:"2H·4"  },
+  { id:"h2_0",  half:2, label:"Final", shortLabel:"Final" },
+];
+
+function loadTOState() {
+  try { const s = localStorage.getItem(TO_STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveTOState(games, activeId) {
+  try { localStorage.setItem(TO_STORAGE_KEY, JSON.stringify({ games, activeId })); } catch {}
+}
+
+function makeTOGame(id) {
+  return {
+    id, name: "", nameManual: false,
+    teamA: "", teamB: "",
+    sport: "ncaab",
+    espnGameId: null, gameDate: null,
+    players: [],       // max 10, each gets a digit 0-9
+    assignments: {},   // digit (0-9) -> player name
+    results: {},       // slotId -> { scoreA, scoreB, digit, winner, locked, paid }
+    botRunning: false,
+    botLastSlotId: null,
+  };
+}
+
+function toTabLabel(g) {
+  if (g.name) return g.name;
+  if (g.teamA && g.teamB) return autoTabName(g.teamA, g.teamB);
+  return `Game ${g.id}`;
+}
+
+function calcDigit(scoreA, scoreB) {
+  return (scoreA % 10 + scoreB % 10) % 10;
+}
+
+// ─── Timeout Setup Panel ──────────────────────────────────────────────────────
+function TOSetupPanel({ game, onUpdate, onDelete }) {
+  const [espnGames, setEspnGames]   = useState([]);
+  const [espnLoading, setEspnLoading] = useState(false);
+  const [espnError, setEspnError]   = useState("");
+  const [roster] = useState(() => loadRoster());
+
+  const todayLocal = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+  const [selectedDate, setSelectedDate] = useState(() => game.gameDate || todayLocal());
+  const dateInputRef = useRef(null);
+
+  useEffect(() => { loadGames(); }, [game.sport, selectedDate]);
+
+  const loadGames = async () => {
+    setEspnLoading(true); setEspnError(""); setEspnGames([]);
+    try {
+      const dateStr = selectedDate.replace(/-/g, "");
+      const path = SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball";
+      const res = await fetch(`${BACKEND}/scores?sport=${path}&dates=${dateStr}`);
+      const data = await res.json();
+      setEspnGames(data.games || []);
+    } catch { setEspnError("Could not load games."); }
+    setEspnLoading(false);
+  };
+
+  const selectGame = (g) => {
+    const auto = autoTabName(g.awayTeam, g.homeTeam);
+    onUpdate({ teamA: g.awayTeam, teamB: g.homeTeam, espnGameId: g.id, gameDate: selectedDate,
+      name: game.nameManual ? game.name : (auto || game.name) });
+    setEspnGames([]);
+  };
+
+  const togglePlayer = (p) => {
+    const cur = game.players;
+    if (cur.includes(p)) {
+      // remove — also clear their assignment
+      const newAssign = { ...game.assignments };
+      Object.keys(newAssign).forEach(d => { if (newAssign[d] === p) delete newAssign[d]; });
+      onUpdate({ players: cur.filter(x => x !== p), assignments: newAssign });
+    } else {
+      if (cur.length >= 10) return; // max 10
+      onUpdate({ players: [...cur, p] });
+    }
+  };
+
+  const randomizeAssignments = () => {
+    if (game.players.length === 0) return;
+    const digits = shuffle([0,1,2,3,4,5,6,7,8,9]).slice(0, game.players.length);
+    const assign = {};
+    game.players.forEach((p, i) => { assign[digits[i]] = p; });
+    onUpdate({ assignments: assign });
+  };
+
+  const assigned = Object.entries(game.assignments).sort((a,b) => a[0]-b[0]);
+  const gameSelected = !!(game.teamA && game.teamB);
+
+  return (
+    <div>
+      {/* Step 1: Sport */}
+      <div className="card">
+        <div className="card-title">Step 1 — Pick Sport & Date</div>
+        <div className="field">
+          <label>Sport</label>
+          <select value={game.sport} onChange={e => onUpdate({ sport: e.target.value, teamA:"", teamB:"", espnGameId:null })}>
+            <option value="ncaab">NCAA Basketball</option>
+            <option value="nba">NBA</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Date</label>
+          <input ref={dateInputRef} type="date" value={selectedDate}
+            style={{colorScheme:"dark"}}
+            onClick={() => dateInputRef.current?.showPicker?.()}
+            onChange={e => { setSelectedDate(e.target.value); onUpdate({ gameDate: e.target.value }); }} />
+        </div>
+      </div>
+
+      {/* Step 2: Pick Game */}
+      <div className="card">
+        <div className="card-title">Step 2 — Select Game</div>
+        {espnLoading && <div style={{fontSize:12,color:"var(--text-dim)"}}>Loading ESPN games…</div>}
+        {espnError && <div style={{fontSize:12,color:"var(--danger)"}}>{espnError}</div>}
+        {espnGames.length > 0 && (
+          <div className="game-select-list">
+            {espnGames.map(g => {
+              const isSel = game.espnGameId === g.id;
+              return (
+                <div key={g.id} className={`game-option ${g.inProgress?"live":""}`} onClick={() => selectGame(g)}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div className="go-name">
+                      {isSel && <span style={{color:"var(--court-bright)",marginRight:5}}>✓</span>}
+                      {g.awayTeam} vs {g.homeTeam}
+                    </div>
+                    {g.inProgress && <span style={{fontSize:10,color:"#f87171",fontWeight:700}}>LIVE</span>}
+                  </div>
+                  <div className="go-status">{g.inProgress ? `🔴 ${g.awayScore}–${g.homeScore}  ·  ${g.shortDetail||g.status}` : g.status}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {gameSelected && (
+          <div style={{marginTop:12,padding:"10px 14px",background:"rgba(51,102,204,0.08)",border:"1px solid var(--court-dim)",borderRadius:8}}>
+            <div style={{fontSize:11,color:"var(--text-dim)",letterSpacing:.8,textTransform:"uppercase",marginBottom:4}}>Selected</div>
+            <div style={{fontWeight:700,fontSize:15}}>{game.teamA} vs {game.teamB}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Step 3: Players (max 10) */}
+      {gameSelected && (
+        <div className="card">
+          <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>Step 3 — Select Players</span>
+            <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:400}}>
+              {game.players.length}/10 selected
+            </span>
+          </div>
+          {roster.length === 0 ? (
+            <div style={{fontSize:13,color:"var(--text-dim)"}}>No roster yet — go to the Players tab to add some.</div>
+          ) : (
+            <div className="roster-picker">
+              {roster.map(p => {
+                const inGame = game.players.includes(p);
+                const atMax = game.players.length >= 10 && !inGame;
+                return (
+                  <div key={p} className={`roster-row ${inGame?"in-game":""} ${atMax?"":""}` }
+                    style={{opacity: atMax ? 0.4 : 1, cursor: atMax ? "not-allowed" : "pointer"}}
+                    onClick={() => !atMax && togglePlayer(p)}>
+                    <div className={`roster-check ${inGame?"checked":""}`}>{inGame && "✓"}</div>
+                    <div className="roster-name">{p}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {game.players.length > 0 && (
+            <div style={{fontSize:11,color:"var(--text-dim)",marginTop:8}}>
+              {game.players.length} player{game.players.length!==1?"s":""} — {10-game.players.length} slot{10-game.players.length!==1?"s":""} remaining
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 4: Randomize digits */}
+      {game.players.length > 0 && (
+        <div className="card">
+          <div className="card-title">Step 4 — Assign Digits</div>
+          <p style={{fontSize:12,color:"var(--text-dim)",marginBottom:12}}>
+            Each player gets one unique digit 0–9. At each TV timeout: last digit of Team A score + last digit of Team B score = winning digit.
+          </p>
+          <button className="btn btn-primary" style={{marginBottom:14}} onClick={randomizeAssignments}>
+            🔀 Randomize Digits
+          </button>
+          {assigned.length > 0 && (
+            <div className="digit-assign">
+              {assigned.map(([digit, player]) => (
+                <div key={digit} className="digit-card">
+                  <div className="dnum">{digit}</div>
+                  <div className="dname">{player}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {assigned.length === 0 && game.players.length > 0 && (
+            <div style={{fontSize:12,color:"var(--text-dim)"}}>Hit Randomize to assign digits</div>
+          )}
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-title" style={{color:"var(--danger)"}}>Danger Zone</div>
+        <button className="btn btn-danger btn-sm" onClick={onDelete}>🗑 End & Delete Game</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Timeout Board Panel ──────────────────────────────────────────────────────
+function TOBoardPanel({ game, onUpdate, onToast }) {
+  const winCounts = {};
+  game.players.forEach(p => { winCounts[p] = 0; });
+  Object.values(game.results).forEach(r => {
+    if (r.locked && r.winner) winCounts[r.winner] = (winCounts[r.winner] || 0) + 1;
+  });
+
+  const togglePaid = (slotId) => {
+    const cur = game.results[slotId] || {};
+    onUpdate({ results: { ...game.results, [slotId]: { ...cur, paid: !cur.paid } } });
+  };
+
+  return (
+    <div>
+      {/* Timeout slots */}
+      {[1, 2].map(half => (
+        <div key={half} className="card">
+          <div className="card-title">{half === 1 ? "First Half" : "Second Half"}</div>
+          {TIMEOUT_SLOTS.filter(s => s.half === half).map(slot => {
+            const res = game.results[slot.id];
+            const locked = res?.locked;
+            return (
+              <div key={slot.id} style={{
+                display:"flex", alignItems:"center", gap:10, padding:"10px 0",
+                borderBottom:"1px solid var(--border)"
+              }}>
+                {/* Slot label */}
+                <div style={{
+                  fontFamily:"'Bebas Neue',sans-serif", fontSize:15,
+                  color: locked ? "var(--court-bright)" : "var(--text-dim)",
+                  minWidth:60, letterSpacing:.5
+                }}>{slot.label}</div>
+
+                {locked ? (
+                  <>
+                    <div style={{fontSize:12,color:"var(--text-dim)",minWidth:60}}>
+                      {res.scoreA}–{res.scoreB}
+                    </div>
+                    <div style={{fontSize:11,color:"var(--text-dim)",minWidth:32}}>
+                      …{res.scoreA%10}+…{res.scoreB%10}={res.digit}
+                    </div>
+                    <div style={{flex:1,fontWeight:700,color:"var(--win)",fontSize:13}}>
+                      {res.winner || "—"}
+                    </div>
+                    {/* Paid checkbox */}
+                    <div onClick={() => togglePaid(slot.id)}
+                      style={{cursor:"pointer",fontSize:11,color:res.paid?"var(--win)":"var(--text-dim)",
+                        border:"1px solid",borderColor:res.paid?"var(--win)":"var(--border)",
+                        borderRadius:4,padding:"2px 7px",userSelect:"none",flexShrink:0}}>
+                      {res.paid ? "✓ Paid" : "Unpaid"}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{fontSize:12,color:"var(--text-dim)",fontStyle:"italic",flex:1}}>
+                    Pending…
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Leaderboard */}
+      {game.players.length > 0 && (
+        <div className="card">
+          <div className="card-title">Leaderboard</div>
+          {Object.entries(winCounts)
+            .sort((a,b) => b[1]-a[1])
+            .map(([player, wins]) => {
+              const digit = Object.entries(game.assignments).find(([,p])=>p===player)?.[0];
+              return (
+                <div key={player} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--border)"}}>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"var(--court-bright)",minWidth:28}}>{digit ?? "?"}</div>
+                  <div style={{flex:1,fontWeight:600}}>{player}</div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:wins>0?"var(--win)":"var(--text-dim)"}}>
+                    {wins} win{wins!==1?"s":""}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Timeout Live Panel ───────────────────────────────────────────────────────
+function TOLivePanel({ game, onUpdate, onToast }) {
+  const [scoreA, setScoreA] = useState(0);
+  const [scoreB, setScoreB] = useState(0);
+  const [activeSlotId, setActiveSlotId] = useState(null);
+  const [botRunning, setBotRunning] = useState(false);
+  const [botStatus, setBotStatus] = useState("");
+  const [botLive, setBotLive]   = useState(false);
+  const [challenging, setChallenging] = useState(false);
+  const [challengeResult, setChallengeResult] = useState(null);
+  const timerRef = useRef(null);
+  const lastNotifiedKey = useRef(null); // "scoreA-scoreB" — avoid duplicate notifications
+
+  // Determine next unlocked slot
+  const nextSlot = TIMEOUT_SLOTS.find(s => !game.results[s.id]?.locked);
+
+  useEffect(() => {
+    if (nextSlot && !activeSlotId) setActiveSlotId(nextSlot.id);
+  }, []);
+
+  const liveDigit = calcDigit(scoreA, scoreB);
+  const liveWinner = game.assignments[liveDigit] || null;
+
+  const lockSlot = (slotId, sA, sB) => {
+    const digit = calcDigit(sA, sB);
+    const winner = game.assignments[digit] || null;
+    const updated = {
+      ...game.results,
+      [slotId]: { scoreA: sA, scoreB: sB, digit, winner, locked: true, paid: false }
+    };
+    onUpdate({ results: updated });
+    const slot = TIMEOUT_SLOTS.find(s => s.id === slotId);
+    onToast(winner ? `🔒 ${slot?.label} locked — ${winner} wins!` : `🔒 ${slot?.label} locked — digit ${digit}, no player`);
+    // advance to next unlocked slot
+    const remaining = TIMEOUT_SLOTS.find(s => s.id !== slotId && !game.results[s.id]?.locked);
+    if (remaining) setActiveSlotId(remaining.id);
+  };
+
+  // Score bot — same ESPN pattern as Squares
+  const mapStatus = (s) => {
+    const n = (s||"").toLowerCase();
+    if (n.includes("final")) return "final";
+    if (n.includes("half")) return "halftime";
+    if (n.includes("progress")||n.includes("live")) return "in progress";
+    if (n.includes("end")) return "end of period";
+    return "not started";
+  };
+
+  const getInterval = (status) => {
+    if (status === "final") return 300000;
+    if (status === "in progress") return 30000;
+    if (status === "halftime" || status === "end of period") return 60000;
+    return 120000;
+  };
+
+  const fetchScores = useCallback(async () => {
+    if (!game.teamA && !game.teamB) { setBotStatus("Set teams in Setup first"); return; }
+    try {
+      const path = SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball";
+      const dateStr = game.gameDate ? game.gameDate.replace(/-/g,"") : "";
+      const res = await fetch(`${BACKEND}/scores?sport=${path}${dateStr ? `&dates=${dateStr}` : ""}`);
+      const data = await res.json();
+      const games = data.games || [];
+      let found = game.espnGameId ? games.find(g => g.id === game.espnGameId) : null;
+      if (!found) {
+        const tA = (game.teamA||"").toLowerCase(), tB = (game.teamB||"").toLowerCase();
+        found = games.find(g => {
+          const h=(g.homeTeam||"").toLowerCase(), aw=(g.awayTeam||"").toLowerCase();
+          return h.includes(tA)||h.includes(tB)||aw.includes(tA)||aw.includes(tB);
+        });
+      }
+      if (!found) { setBotStatus("Game not found on ESPN"); return; }
+
+      const sA = found.awayScore, sB = found.homeScore;
+      setScoreA(sA); setScoreB(sB);
+      const status = mapStatus(found.status);
+      setBotLive(status === "in progress");
+      setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
+
+      // Check play-by-play for a new Official TV Timeout
+      if (game.espnGameId && status === "in progress") {
+        try {
+          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball"}`);
+          const pbpData = await pbpRes.json();
+          const tvPlays = (pbpData.plays || []).filter(p => (p.text||"").toLowerCase().includes("official tv timeout"));
+          if (tvPlays.length > 0) {
+            const latest = tvPlays[tvPlays.length - 1];
+            const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
+            if (tvKey !== lastNotifiedKey.current) {
+              lastNotifiedKey.current = tvKey;
+              const tvScoreA = latest.awayScore ?? sA;
+              const tvScoreB = latest.homeScore ?? sB;
+              const digit = calcDigit(tvScoreA, tvScoreB);
+              const winner = game.assignments[digit] || null;
+              // Update score inputs to match the official TV timeout score
+              setScoreA(tvScoreA);
+              setScoreB(tvScoreB);
+              setBotStatus(`📺 Official TV Timeout detected! Score: ${tvScoreA}–${tvScoreB} · Digit ${digit}`);
+              onToast(winner
+                ? `📺 TV Timeout! ${winner} is winning — digit ${digit} (${tvScoreA}–${tvScoreB})`
+                : `📺 TV Timeout! Digit ${digit} — no player assigned`
+              );
+              if (Notification.permission === "granted") {
+                new Notification("⏱ Official TV Timeout!", {
+                  body: winner
+                    ? `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit}  ·  ${winner} is winning`
+                    : `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit} — no player assigned`
+                });
+              }
+            }
+          }
+        } catch { /* play-by-play fetch failed silently — scores still update */ }
+      }
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (botRunning) timerRef.current = setTimeout(fetchScores, getInterval(status));
+    } catch {
+      setBotStatus("Fetch failed — retrying");
+      if (botRunning) timerRef.current = setTimeout(fetchScores, 30000);
+    }
+  }, [game, botRunning]);
+
+  // Challenge — re-fetch ESPN play-by-play to verify official TV timeout score
+  const challenge = async () => {
+    if (!game.espnGameId) { setChallengeResult({ error: "No ESPN game linked — select a game in Setup first." }); return; }
+    setChallenging(true); setChallengeResult(null);
+    try {
+      const res = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball"}`);
+      const data = await res.json();
+      const plays = data.plays || [];
+      // Find most recent Official TV Timeout
+      const tvPlays = plays.filter(p => (p.text||"").toLowerCase().includes("official tv timeout"));
+      if (tvPlays.length === 0) {
+        setChallengeResult({ error: "No Official TV Timeout found in ESPN play-by-play yet." });
+      } else {
+        const last = tvPlays[tvPlays.length - 1];
+        const homeScore = last.homeScore ?? last.home_score ?? "?";
+        const awayScore = last.awayScore ?? last.away_score ?? "?";
+        const clock = last.clock || last.displayClock || "";
+        const period = last.period?.number || last.period || "";
+        setChallengeResult({ awayScore, homeScore, clock, period, text: last.text });
+        // Auto-fill score inputs with challenged scores
+        if (typeof awayScore === "number") setScoreA(awayScore);
+        if (typeof homeScore === "number") setScoreB(homeScore);
+      }
+    } catch {
+      setChallengeResult({ error: "Could not fetch play-by-play. Try again." });
+    }
+    setChallenging(false);
+  };
+
+  const startBot = () => { Notification.requestPermission(); setBotRunning(true); setBotStatus("Starting…"); };
+  const stopBot  = () => { setBotRunning(false); if (timerRef.current) clearTimeout(timerRef.current); setBotStatus("Stopped"); setBotLive(false); };
+
+  useEffect(() => {
+    if (botRunning) fetchScores();
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [botRunning]);
+
+  const activeSlot = TIMEOUT_SLOTS.find(s => s.id === activeSlotId);
+
+  return (
+    <div>
+      {/* Live Score Bot */}
+      <div className="card">
+        <div className="card-title">Live Score Bot</div>
+        <div className="bot-header">
+          {!botRunning
+            ? <button className="btn btn-primary btn-sm" onClick={startBot}>▶ Start Bot</button>
+            : <button className="btn btn-secondary btn-sm" onClick={stopBot}>■ Stop</button>}
+          {botRunning && <button className="btn btn-secondary btn-sm" onClick={fetchScores}>↻ Now</button>}
+          <div className={`bot-status ${botLive?"live":""}`}>
+            {botLive && <span className="pulse" style={{marginRight:4}}></span>}
+            {botStatus || (game.teamA ? `Tracking ${game.teamA} vs ${game.teamB}` : "Select a game in Setup")}
+          </div>
+        </div>
+        <div className="score-display" style={{marginTop:12}}>
+          <div className="score-team">
+            <div className="score-team-name">{game.teamA||"Team A"}</div>
+            <div className="score-num">{scoreA}</div>
+          </div>
+          <div className="score-sep">–</div>
+          <div className="score-team">
+            <div className="score-team-name">{game.teamB||"Team B"}</div>
+            <div className="score-num">{scoreB}</div>
+          </div>
+        </div>
+
+        {/* Live projected winner */}
+        <div className="winner-preview">
+          <div className="label">Live projected winner</div>
+          <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:4}}>
+            …{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)"}}>{liveDigit}</strong>
+          </div>
+          <div className="name" style={{fontSize:22}}>
+            {liveWinner ? `🏆 ${liveWinner}` : `Digit ${liveDigit} — unassigned`}
+          </div>
+        </div>
+      </div>
+
+      {/* Manual Score Entry + Lock */}
+      <div className="card">
+        <div className="card-title">Lock a Timeout</div>
+
+        {/* Slot selector */}
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {TIMEOUT_SLOTS.map(slot => {
+            const locked = game.results[slot.id]?.locked;
+            return (
+              <div key={slot.id}
+                className={`period-tab ${slot.id===activeSlotId?"active":""} ${locked?"locked":""}`}
+                onClick={() => !locked && setActiveSlotId(slot.id)}>
+                {slot.shortLabel} {locked && "✓"}
+              </div>
+            );
+          })}
+        </div>
+
+        {activeSlot && !game.results[activeSlot.id]?.locked && (
+          <>
+            <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:10}}>
+              Locking: <strong style={{color:"var(--text)"}}>{activeSlot.label}</strong>
+            </div>
+            <div className="score-row">
+              <label>{makeAbbr(game.teamA)||"A"}</label>
+              <div className="score-stepper">
+                <button onClick={() => setScoreA(s => Math.max(0,s-1))}>−</button>
+                <input type="number" value={scoreA} onChange={e => setScoreA(parseInt(e.target.value)||0)} />
+                <button onClick={() => setScoreA(s => s+1)}>+</button>
+              </div>
+            </div>
+            <div className="score-row">
+              <label>{makeAbbr(game.teamB)||"B"}</label>
+              <div className="score-stepper">
+                <button onClick={() => setScoreB(s => Math.max(0,s-1))}>−</button>
+                <input type="number" value={scoreB} onChange={e => setScoreB(parseInt(e.target.value)||0)} />
+                <button onClick={() => setScoreB(s => s+1)}>+</button>
+              </div>
+            </div>
+
+            <div className="winner-preview" style={{margin:"10px 0"}}>
+              <div className="label">Winner if locked now</div>
+              <div style={{fontSize:12,color:"var(--text-dim)",marginBottom:4}}>
+                …{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)"}}>{calcDigit(scoreA,scoreB)}</strong>
+              </div>
+              <div className="name" style={{fontSize:20}}>
+                {liveWinner ? `🏆 ${liveWinner}` : `Digit ${liveDigit} — unassigned`}
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <button className="btn btn-win" style={{flex:1}}
+                onClick={() => lockSlot(activeSlot.id, scoreA, scoreB)}>
+                🔒 Lock {activeSlot.label}
+              </button>
+              <button className="btn btn-secondary" onClick={challenge} disabled={challenging}
+                title="Re-fetch ESPN play-by-play to verify the official TV timeout score">
+                {challenging ? "⏳" : "⚠️ Challenge"}
+              </button>
+            </div>
+
+            {/* Challenge result */}
+            {challengeResult && (
+              <div style={{
+                marginTop:10, padding:"10px 14px", borderRadius:8,
+                background: challengeResult.error ? "rgba(239,68,68,0.08)" : "rgba(51,102,204,0.08)",
+                border: `1px solid ${challengeResult.error ? "var(--danger)" : "var(--court-dim)"}`,
+                fontSize:12
+              }}>
+                {challengeResult.error ? (
+                  <div style={{color:"var(--danger)"}}>{challengeResult.error}</div>
+                ) : (
+                  <>
+                    <div style={{fontWeight:700,marginBottom:4,color:"var(--court-bright)"}}>
+                      ⚠️ Official TV Timeout — ESPN Verified
+                    </div>
+                    <div style={{color:"var(--text)"}}>
+                      <strong>{game.teamA}</strong> {challengeResult.awayScore} – {challengeResult.homeScore} <strong>{game.teamB}</strong>
+                    </div>
+                    {challengeResult.clock && (
+                      <div style={{color:"var(--text-dim)",marginTop:3}}>
+                        {challengeResult.period ? `Period ${challengeResult.period} · ` : ""}{challengeResult.clock}
+                      </div>
+                    )}
+                    <div style={{color:"var(--text-dim)",marginTop:3,fontStyle:"italic"}}>{challengeResult.text}</div>
+                    <div style={{marginTop:6,color:"var(--win)",fontSize:11}}>✓ Scores auto-filled above</div>
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {activeSlot && game.results[activeSlot.id]?.locked && (
+          <div style={{fontSize:13,color:"var(--win)",textAlign:"center",padding:"10px 0"}}>
+            ✓ {activeSlot.label} is locked
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Timeout Game View ────────────────────────────────────────────────────────
+function TOGameView({ game, onUpdate, onToast, onDelete }) {
+  const [tab, setTab] = useState("setup");
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div className="inner-tabs">
+        {["setup","board","live","players"].map(t => (
+          <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={() => setTab(t)}>{t}</div>
+        ))}
+      </div>
+      <div className="game-content">
+        {tab==="setup"   && <TOSetupPanel game={game} onUpdate={onUpdate} onDelete={onDelete} />}
+        {tab==="board"   && <TOBoardPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab==="live"    && <TOLivePanel  game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab==="players" && <PlayersPanel />}
+      </div>
+    </div>
+  );
+}
+
+// ─── Timeout App Root ─────────────────────────────────────────────────────────
+let toNextId = 1;
+
+function TimeoutApp({ onToast }) {
+  const [games, setGames] = useState(() => {
+    const saved = loadTOState();
+    if (saved?.games?.length) {
+      toNextId = Math.max(...saved.games.map(g=>g.id)) + 1;
+      return saved.games;
+    }
+    return [makeTOGame(toNextId++)];
+  });
+  const [activeId, setActiveId] = useState(() => loadTOState()?.activeId || 1);
+
+  useEffect(() => { saveTOState(games, activeId); }, [games, activeId]);
+
+  const activeGame = games.find(g=>g.id===activeId) || games[0];
+
+  const addGame = () => {
+    const g = makeTOGame(toNextId++);
+    setGames(prev => [...prev, g]);
+    setActiveId(g.id);
+  };
+
+  const removeGame = (id) => {
+    if (games.length === 1) return;
+    const remaining = games.filter(g => g.id !== id);
+    setGames(remaining);
+    if (activeId === id) setActiveId(remaining[0].id);
+  };
+
+  const updateGame = (id, patch) => {
+    setGames(prev => prev.map(g => g.id===id ? {...g,...patch} : g));
+  };
+
+  return (
+    <>
+      <div className="main-area">
+        {activeGame && (
+          <TOGameView
+            key={activeGame.id}
+            game={activeGame}
+            onUpdate={patch => updateGame(activeGame.id, patch)}
+            onToast={onToast}
+            onDelete={() => removeGame(activeGame.id)}
+          />
+        )}
+      </div>
+      <div className="tab-bar">
+        {games.map(g => (
+          <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={() => setActiveId(g.id)}>
+            {toTabLabel(g)}
+            {games.length > 1 && (
+              <span className="tab-close" onClick={e => { e.stopPropagation(); removeGame(g.id); }}>×</span>
+            )}
+          </div>
+        ))}
+        <div className="tab-add" onClick={addGame} title="Add game">＋</div>
+      </div>
     </>
   );
 }
