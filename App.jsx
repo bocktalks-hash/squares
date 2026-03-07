@@ -1760,9 +1760,8 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
       const plays = data.plays || [];
       const tvPlays = plays.filter(p => (p.text||"").toLowerCase().includes("official tv timeout"));
       if (tvPlays.length === 0) {
-        setChallengeResult({ error: "No Official TV Timeout found in ESPN play-by-play yet." });
+        setChallengeResult({ notYet: true, error: "No Official TV Timeout found yet — game may not have started." });
       } else {
-        // Map all TV timeouts to slots, then find the one matching the active slot
         const h1 = tvPlays.filter(p => p.period === 1);
         const h2 = tvPlays.filter(p => p.period === 2);
         const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
@@ -1772,23 +1771,21 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
         h2.forEach((p,i) => { if (i < h2Slots.length) slotMap[h2Slots[i]] = p; });
 
         const matchedPlay = activeSlotId ? slotMap[activeSlotId] : null;
+        const slotLabel = activeSlotId ? TIMEOUT_SLOTS.find(s=>s.id===activeSlotId)?.label : "?";
 
         if (!matchedPlay) {
-          // If the selected slot hasn't happened yet, show the most recent one
-          const last = tvPlays[tvPlays.length - 1];
-          const slotLabel = activeSlotId ? TIMEOUT_SLOTS.find(s=>s.id===activeSlotId)?.label : "?";
+          // Slot hasn't happened yet — show as a waiting state, don't auto-fill scores
           setChallengeResult({
-            error: `No TV timeout found yet for slot ${slotLabel}. Showing most recent timeout instead.`,
-            awayScore: last.awayScore, homeScore: last.homeScore,
-            clock: last.clock, period: last.period, text: last.text
+            notYet: true,
+            error: `Timeout at ${slotLabel} hasn't happened yet — bot will auto-detect it when it occurs.`
           });
-          if (typeof last.awayScore === "number") setScoreA(last.awayScore);
-          if (typeof last.homeScore === "number") setScoreB(last.homeScore);
         } else {
           const { awayScore, homeScore, clock, period, text } = matchedPlay;
+          // Validate scores look reasonable before auto-filling
+          const validScores = typeof awayScore === "number" && typeof homeScore === "number"
+            && awayScore >= 0 && homeScore >= 0;
           setChallengeResult({ awayScore, homeScore, clock, period, text });
-          if (typeof awayScore === "number") setScoreA(awayScore);
-          if (typeof homeScore === "number") setScoreB(homeScore);
+          if (validScores) { setScoreA(awayScore); setScoreB(homeScore); }
         }
       }
     } catch {
@@ -1906,12 +1903,20 @@ function TOLivePanel({ game, onUpdate, onToast, botProps }) {
             {challengeResult && (
               <div style={{
                 marginTop:10, padding:"10px 14px", borderRadius:8,
-                background: challengeResult.error ? "rgba(239,68,68,0.08)" : "rgba(51,102,204,0.08)",
-                border: `1px solid ${challengeResult.error ? "var(--danger)" : "var(--court-dim)"}`,
+                background: challengeResult.notYet
+                  ? "rgba(255,165,0,0.08)"
+                  : challengeResult.error
+                    ? "rgba(239,68,68,0.08)"
+                    : "rgba(51,102,204,0.08)",
+                border: `1px solid ${challengeResult.notYet ? "orange" : challengeResult.error ? "var(--danger)" : "var(--court-dim)"}`,
                 fontSize:12
               }}>
-                {challengeResult.error ? (
+                {challengeResult.error && !challengeResult.notYet ? (
                   <div style={{color:"var(--danger)"}}>{challengeResult.error}</div>
+                ) : challengeResult.notYet ? (
+                  <div style={{color:"orange"}}>
+                    ⏳ {challengeResult.error}
+                  </div>
                 ) : (
                   <>
                     <div style={{fontWeight:700,marginBottom:4,color:"var(--court-bright)"}}>
@@ -2013,7 +2018,12 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
         try {
           const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${g.espnGameId}&sport=${path}`);
           const pbpData = await pbpRes.json();
-          const tvPlays = (pbpData.plays||[]).filter(p=>(p.text||"").toLowerCase().includes("official tv timeout"));
+          // Only keep TV timeout plays that have valid numeric scores
+          const tvPlays = (pbpData.plays||[]).filter(p=>
+            (p.text||"").toLowerCase().includes("official tv timeout") &&
+            typeof p.homeScore === "number" && typeof p.awayScore === "number" &&
+            p.homeScore >= 0 && p.awayScore >= 0
+          );
 
           const updatedResults = { ...g.results };
           let changed = false;
