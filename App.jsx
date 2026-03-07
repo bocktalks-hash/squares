@@ -781,6 +781,9 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const removePlayer = (p) => onUpdate({ players: game.players.filter(x=>x!==p) });
 
   const randomize = () => {
+    if (game.results.length > 0) {
+      if (!window.confirm(`⚠️ You have ${game.results.length} locked result(s). Randomizing will change the pairs and make those results invalid. Continue?`)) return;
+    }
     const { colPairs, rowPairs } = randomPairs();
     onUpdate({ colPairs, rowPairs });
   };
@@ -1077,15 +1080,9 @@ function GridPanel({ game, onUpdate }) {
 }
 
 // ─── Scores Panel ─────────────────────────────────────────────────────────────
-function ScoresPanel({ game, onUpdate, onToast }) {
-  const [scoreA, setScoreA] = useState(0);
-  const [scoreB, setScoreB] = useState(0);
+function ScoresPanel({ game, onUpdate, onToast, botProps }) {
+  const { scoreA, setScoreA, scoreB, setScoreB, botRunning, setBotRunning, botStatus, setBotStatus, botLive, setBotLive, timerRef } = botProps;
   const [currentQ, setCurrentQ] = useState(game.currentQuarter || 1);
-  const [botRunning, setBotRunning] = useState(false);
-  const [botStatus, setBotStatus] = useState("");
-  const [botLive, setBotLive] = useState(false);
-  const [lastFetch, setLastFetch] = useState(null);
-  const timerRef = useRef(null);
   const periods = getTotalPeriods(game);
 
   useEffect(() => { setCurrentQ(game.currentQuarter || 1); }, [game.currentQuarter]);
@@ -1148,7 +1145,7 @@ function ScoresPanel({ game, onUpdate, onToast }) {
       }
       if (!found) {
         setBotStatus(`Not found — fetched ${games.length} games for ${dateStr||"today"}. IDs: ${games.slice(0,3).map(g=>g.id).join(",")}…`);
-        setLastFetch(new Date()); return;
+        return;
       }
 
       const sA=found.awayScore, sB=found.homeScore;
@@ -1156,7 +1153,7 @@ function ScoresPanel({ game, onUpdate, onToast }) {
       const status = mapStatus(found.status);
       setBotLive(status==="in progress");
       setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
-      setLastFetch(new Date());
+
 
       const periodKey = detectPeriodKey(found);
       if (periodKey && periodKey !== game.botLastPeriodKey) {
@@ -1203,7 +1200,6 @@ function ScoresPanel({ game, onUpdate, onToast }) {
 
   useEffect(() => {
     if (botRunning) { fetchScores(); }
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   // eslint-disable-next-line
   }, [botRunning]);
 
@@ -1359,6 +1355,19 @@ function HistoryPanel({ game, onUpdate }) {
 // ─── Game View ────────────────────────────────────────────────────────────────
 function GameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
+
+  // ── Bot & score state lifted up so it survives tab switches ──
+  const [scoreA, setScoreA]       = useState(0);
+  const [scoreB, setScoreB]       = useState(0);
+  const [botRunning, setBotRunning] = useState(false);
+  const [botStatus, setBotStatus]   = useState("");
+  const [botLive, setBotLive]       = useState(false);
+  const timerRef = useRef(null);
+  // Stop bot if game is deleted or component unmounts
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const botProps = { scoreA, setScoreA, scoreB, setScoreB, botRunning, setBotRunning, botStatus, setBotStatus, botLive, setBotLive, timerRef };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div className="inner-tabs">
@@ -1371,13 +1380,14 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
         ].map(t=>(
           <div key={t.id} className={`inner-tab ${tab===t.id?"active":""}`} onClick={()=>setTab(t.id)}>
             <span style={{fontSize:13}}>{t.icon}</span> {t.label}
+            {t.id==="scores" && botRunning && <span style={{marginLeft:4,color:"var(--win)",fontSize:9}}>●</span>}
           </div>
         ))}
       </div>
       <div className="game-content">
         {tab==="setup"   && <SetupPanel game={game} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab==="grid"    && <GridPanel game={game} onUpdate={onUpdate} />}
-        {tab==="scores"  && <ScoresPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab==="scores"  && <ScoresPanel game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
         {tab==="players" && <PlayersPanel />}
         {tab==="history" && <HistoryPanel game={game} onUpdate={onUpdate} />}
       </div>
