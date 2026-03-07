@@ -814,14 +814,18 @@ function ScoresPanel({ game, onUpdate, onToast }) {
     }
     try {
       const sport = SPORT_CONFIG[game.sport].path;
-      // Always fetch using the game's scheduled date so it works day-before setup
       const dateStr = game.gameDate ? game.gameDate.replace(/-/g,"") : "";
       const url = dateStr
         ? `${BACKEND}/scores?sport=${sport}&dates=${dateStr}`
         : `${BACKEND}/scores?sport=${sport}`;
+      setBotStatus(`Fetching... date=${dateStr||"today"} id=${game.espnGameId||"none"}`);
       const res = await fetch(url);
       const data = await res.json();
       const games = data.games || [];
+      // Show debug info of what came back
+      const gameNames = games.map(g => g.id + ":" + g.awayTeam + " vs " + g.homeTeam).join(" | ");
+      console.log("ESPN returned:", gameNames);
+      console.log("Looking for ID:", game.espnGameId);
       // Match by ESPN game ID first (most reliable), fall back to team name
       let found = game.espnGameId ? games.find(g => g.id === game.espnGameId) : null;
       if (!found) {
@@ -833,7 +837,10 @@ function ScoresPanel({ game, onUpdate, onToast }) {
           return h.includes(teamAl)||h.includes(teamBl)||aw.includes(teamAl)||aw.includes(teamBl);
         });
       }
-      if (!found) { setBotStatus("Game not found — check Setup tab"); setLastFetch(new Date()); return; }
+      if (!found) {
+        setBotStatus(`Not found — fetched ${games.length} games for ${dateStr||"today"}. IDs: ${games.slice(0,3).map(g=>g.id).join(",")}…`);
+        setLastFetch(new Date()); return;
+      }
 
       const sA=found.awayScore, sB=found.homeScore;
       setScoreA(sA); setScoreB(sB);
