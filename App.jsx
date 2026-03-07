@@ -273,14 +273,18 @@ html, body, #root { height:100%; background:var(--bg); color:var(--text); font-f
 .col-header { font-size:13px; color:var(--court-bright); font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
 .sq-cell {
   width:60px; height:52px; cursor:pointer; transition:background .15s;
-  font-size:10px; font-weight:600; color:var(--text-dim); vertical-align:middle;
-  overflow:hidden;
+  font-size:10px; font-weight:600; color:var(--text-dim);
+  overflow:hidden; padding:0;
+  /* make the whole cell a flex box so content centers perfectly */
+  display:table-cell; vertical-align:middle; text-align:center;
+  user-select:none;
 }
 .sq-cell:hover { background:var(--surface2); color:var(--text); }
 .sq-cell.filled { color:var(--text); background: rgba(51,102,204,0.08); }
 .sq-cell.winner-now { background:rgba(34,197,94,0.2) !important; color:var(--win) !important; box-shadow:inset 0 0 0 2px var(--win); font-weight:700; }
 .sq-cell.winner-prev { background:rgba(34,197,94,0.07) !important; color:rgba(34,197,94,0.7) !important; }
-.sq-cell.empty-cell { color:var(--border); }
+.sq-cell.empty-cell { color:transparent; }
+.sq-cell.empty-cell:hover { color:var(--text-dim); }
 
 /* ── Score Bot ── */
 .bot-header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -822,14 +826,10 @@ function GridPanel({ game, onUpdate }) {
                     <div style={{fontSize:9,color:"var(--text-dim)"}}>{game.teamB?makeAbbr(game.teamB):"B"}</div>
                   </th>
                   {(game.colPairs||[]).map((_pair, colIdx)=>(
-                    <td key={colIdx}>
-                      <div className={cellClass(rowIdx,colIdx)}
-                        style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",padding:"2px"}}
-                        onClick={()=>setAssignCell([rowIdx,colIdx])}>
-                        {game.grid[rowIdx][colIdx] || (
-                          <span style={{fontSize:16,opacity:.15}}>+</span>
-                        )}
-                      </div>
+                    <td key={colIdx}
+                      className={cellClass(rowIdx,colIdx)}
+                      onClick={()=>setAssignCell([rowIdx,colIdx])}>
+                      {game.grid[rowIdx][colIdx] || "·"}
                     </td>
                   ))}
                 </tr>
