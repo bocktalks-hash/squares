@@ -1420,7 +1420,14 @@ function TOSetupPanel({ game, onUpdate, onDelete }) {
   const [espnGames, setEspnGames]   = useState([]);
   const [espnLoading, setEspnLoading] = useState(false);
   const [espnError, setEspnError]   = useState("");
-  const [roster] = useState(() => loadRoster());
+  // Live roster — stays in sync with the Players tab
+  const [roster, setRoster] = useState(() => loadRoster());
+  useEffect(() => {
+    const onStorage = () => setRoster(loadRoster());
+    window.addEventListener("storage", onStorage);
+    const interval = setInterval(() => setRoster(loadRoster()), 2000);
+    return () => { window.removeEventListener("storage", onStorage); clearInterval(interval); };
+  }, []);
 
   const todayLocal = () => {
     const d = new Date();
@@ -2010,10 +2017,12 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
           const pbpData = await pbpRes.json();
           const tvPlays = (pbpData.plays||[]).filter(p=>(p.text||"").toLowerCase().includes("official tv timeout"));
 
+          const updatedResults = { ...g.results };
+          let changed = false;
+
+          // ── TV Timeout slots (h1_16 … h2_4) ──
           if (tvPlays.length > 0) {
             const slotMap = mapTvTimeoutsToSlots(tvPlays);
-            const updatedResults = { ...g.results };
-            let changed = false;
             Object.entries(slotMap).forEach(([slotId, play]) => {
               if (!updatedResults[slotId]?.locked) {
                 const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
@@ -2026,8 +2035,8 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
                 changed = true;
               }
             });
-            if (changed) onUpdate({ results: updatedResults });
 
+            // Notify for newest TV timeout
             const latest = tvPlays[tvPlays.length-1];
             const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
             if (tvKey !== lastNotified.current) {
@@ -2049,6 +2058,55 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
               }
             }
           }
+
+          // ── Halftime slot (h1_0) — use score when period 2 starts ──
+          // Find the last play of period 1 (score right before period 2 begins)
+          const allPlays = pbpData.plays || [];
+          const period1Plays = allPlays.filter(p => p.period === 1);
+          if (period1Plays.length > 0 && !updatedResults["h1_0"]?.locked) {
+            const lastP1 = period1Plays[period1Plays.length - 1];
+            // Only fill if period 2 has started (confirms halftime is over)
+            const period2Started = allPlays.some(p => p.period === 2);
+            if (period2Started && lastP1.homeScore != null) {
+              const hA = lastP1.awayScore ?? sA, hB = lastP1.homeScore ?? sB;
+              const digit = calcDigit(hA, hB);
+              updatedResults["h1_0"] = {
+                scoreA:hA, scoreB:hB, digit,
+                winner: g.assignments[digit]||null,
+                locked:false, paid:false, pending:true
+              };
+              changed = true;
+            }
+          }
+
+          // ── Final slot (h2_0) — use completed game score ──
+          if (status === "final" && !updatedResults["h2_0"]?.locked) {
+            const digit = calcDigit(sA, sB);
+            updatedResults["h2_0"] = {
+              scoreA:sA, scoreB:sB, digit,
+              winner: g.assignments[digit]||null,
+              locked:false, paid:false, pending:true
+            };
+            changed = true;
+            // Notify final
+            const finalKey = `final-${sA}-${sB}`;
+            if (finalKey !== lastNotified.current) {
+              lastNotified.current = finalKey;
+              const winner = g.assignments[digit]||null;
+              onToast(winner
+                ? `🏁 Final! ${winner} wins — digit ${digit} (${sA}–${sB})`
+                : `🏁 Final! Digit ${digit} — no player assigned`);
+              if (Notification.permission==="granted") {
+                new Notification("🏁 Game Final!", {
+                  body: winner
+                    ? `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins`
+                    : `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit} — unassigned`
+                });
+              }
+            }
+          }
+
+          if (changed) onUpdate({ results: updatedResults });
         } catch { /* pbp failed silently */ }
       }
 
