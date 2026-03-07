@@ -434,6 +434,15 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const [espnGames, setEspnGames] = useState([]);
   const [espnLoading, setEspnLoading] = useState(false);
   const [espnError, setEspnError] = useState("");
+  const dateInputRef = useRef(null);
+
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return "Pick a date";
+    // Parse YYYY-MM-DD without timezone conversion
+    const [y, m, d] = dateStr.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+  };
   // Get today's date in local timezone (avoids UTC shifting the date back)
   const todayLocal = () => {
     const d = new Date();
@@ -450,8 +459,9 @@ function SetupPanel({ game, onUpdate, onDelete }) {
   const loadGames = async () => {
     setEspnLoading(true); setEspnError(""); setEspnGames([]);
     try {
-      // Use the date string directly — no UTC conversion
-      const dateStr = selectedDate.replace(/-/g,"");
+      // Build YYYYMMDD from local date string — no UTC conversion ever
+      const [y, mo, da] = selectedDate.split("-");
+      const dateStr = `${y}${mo}${da}`;
       const sport = SPORT_CONFIG[game.sport].path;
       const res = await fetch(`${BACKEND}/scores?sport=${sport}&dates=${dateStr}`);
       const data = await res.json();
@@ -518,7 +528,26 @@ function SetupPanel({ game, onUpdate, onDelete }) {
         </div>
         <div className="field" style={{marginBottom:0}}>
           <label>Date</label>
-          <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+          <div style={{position:"relative"}}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+              ref={dateInputRef}
+              style={{position:"absolute",opacity:0,width:"100%",height:"100%",top:0,left:0,cursor:"pointer",zIndex:2}}
+            />
+            <div
+              onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.click()}
+              style={{
+                background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:6,
+                padding:"9px 12px",color:"var(--text)",fontSize:14,cursor:"pointer",
+                display:"flex",justifyContent:"space-between",alignItems:"center",
+                userSelect:"none",
+              }}>
+              <span>{formatDisplayDate(selectedDate)}</span>
+              <span style={{color:"var(--text-dim)",fontSize:16}}>📅</span>
+            </div>
+          </div>
         </div>
       </div>
 
