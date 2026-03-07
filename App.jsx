@@ -528,26 +528,19 @@ function SetupPanel({ game, onUpdate, onDelete }) {
         </div>
         <div className="field" style={{marginBottom:0}}>
           <label>Date</label>
-          <div style={{position:"relative"}}>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
-              ref={dateInputRef}
-              style={{position:"absolute",opacity:0,width:"100%",height:"100%",top:0,left:0,cursor:"pointer",zIndex:2}}
-            />
-            <div
-              onClick={() => dateInputRef.current?.showPicker?.() || dateInputRef.current?.click()}
-              style={{
-                background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:6,
-                padding:"9px 12px",color:"var(--text)",fontSize:14,cursor:"pointer",
-                display:"flex",justifyContent:"space-between",alignItems:"center",
-                userSelect:"none",
-              }}>
-              <span>{formatDisplayDate(selectedDate)}</span>
-              <span style={{color:"var(--text-dim)",fontSize:16}}>📅</span>
-            </div>
-          </div>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={e => setSelectedDate(e.target.value)}
+            ref={dateInputRef}
+            onClick={e => { e.preventDefault(); dateInputRef.current?.showPicker?.(); }}
+            style={{
+              width:"100%", background:"var(--surface2)", border:"1px solid var(--border)",
+              borderRadius:6, padding:"9px 12px", color:"var(--text)", fontSize:14,
+              fontFamily:"'DM Sans',sans-serif", cursor:"pointer", outline:"none",
+              colorScheme:"dark",
+            }}
+          />
         </div>
       </div>
 
