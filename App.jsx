@@ -1714,17 +1714,11 @@ function TOBoardPanel({ game, onUpdate, onToast }) {
 }
 
 // ─── Timeout Live Panel ───────────────────────────────────────────────────────
-function TOLivePanel({ game, onUpdate, onToast }) {
-  const [scoreA, setScoreA] = useState(0);
-  const [scoreB, setScoreB] = useState(0);
+function TOLivePanel({ game, onUpdate, onToast, botProps }) {
+  const { botRunning, setBotRunning, botStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores } = botProps;
   const [activeSlotId, setActiveSlotId] = useState(null);
-  const [botRunning, setBotRunning] = useState(false);
-  const [botStatus, setBotStatus] = useState("");
-  const [botLive, setBotLive]   = useState(false);
   const [challenging, setChallenging] = useState(false);
   const [challengeResult, setChallengeResult] = useState(null);
-  const timerRef = useRef(null);
-  const lastNotifiedKey = useRef(null); // "scoreA-scoreB" — avoid duplicate notifications
 
   // Determine next unlocked slot
   const nextSlot = TIMEOUT_SLOTS.find(s => !game.results[s.id]?.locked);
@@ -1741,165 +1735,56 @@ function TOLivePanel({ game, onUpdate, onToast }) {
     const winner = game.assignments[digit] || null;
     const updated = {
       ...game.results,
-      [slotId]: { scoreA: sA, scoreB: sB, digit, winner, locked: true, paid: false }
+      [slotId]: { scoreA: sA, scoreB: sB, digit, winner, locked: true, paid: false, pending: false }
     };
     onUpdate({ results: updated });
     const slot = TIMEOUT_SLOTS.find(s => s.id === slotId);
     onToast(winner ? `🔒 ${slot?.label} locked — ${winner} wins!` : `🔒 ${slot?.label} locked — digit ${digit}, no player`);
-    // advance to next unlocked slot
     const remaining = TIMEOUT_SLOTS.find(s => s.id !== slotId && !game.results[s.id]?.locked);
     if (remaining) setActiveSlotId(remaining.id);
   };
 
-  // Score bot — same ESPN pattern as Squares
-  const mapStatus = (s) => {
-    const n = (s||"").toLowerCase();
-    if (n.includes("final")) return "final";
-    if (n.includes("half")) return "halftime";
-    if (n.includes("progress")||n.includes("live")) return "in progress";
-    if (n.includes("end")) return "end of period";
-    return "not started";
-  };
-
-  const getInterval = (status) => {
-    if (status === "final") return 300000;
-    if (status === "in progress") return 30000;
-    if (status === "halftime" || status === "end of period") return 60000;
-    return 120000;
-  };
-
-  // Map an array of ESPN TV-timeout plays to the 10 slot ids
-  // Slots: h1_16, h1_12, h1_8, h1_4, h1_0 (half), h2_16, h2_12, h2_8, h2_4, h2_0 (final)
-  // Logic: period 1 plays → first half slots in order of occurrence
-  //        period 2 plays → second half slots in order of occurrence
-  const mapTvTimeoutsToSlots = (tvPlays) => {
-    const half1Plays = tvPlays.filter(p => p.period === 1);
-    const half2Plays = tvPlays.filter(p => p.period === 2);
-    const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
-    const h2Slots = ["h2_16","h2_12","h2_8","h2_4","h2_0"];
-    const mapped = {};
-    half1Plays.forEach((play, i) => {
-      if (i < h1Slots.length) mapped[h1Slots[i]] = play;
-    });
-    half2Plays.forEach((play, i) => {
-      if (i < h2Slots.length) mapped[h2Slots[i]] = play;
-    });
-    return mapped;
-  };
-
-  const fetchScores = useCallback(async () => {
-    if (!game.teamA && !game.teamB) { setBotStatus("Set teams in Setup first"); return; }
-    try {
-      const path = SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball";
-      const dateStr = game.gameDate ? game.gameDate.replace(/-/g,"") : "";
-      const res = await fetch(`${BACKEND}/scores?sport=${path}${dateStr ? `&dates=${dateStr}` : ""}`);
-      const data = await res.json();
-      const games = data.games || [];
-      let found = game.espnGameId ? games.find(g => g.id === game.espnGameId) : null;
-      if (!found) {
-        const tA = (game.teamA||"").toLowerCase(), tB = (game.teamB||"").toLowerCase();
-        found = games.find(g => {
-          const h=(g.homeTeam||"").toLowerCase(), aw=(g.awayTeam||"").toLowerCase();
-          return h.includes(tA)||h.includes(tB)||aw.includes(tA)||aw.includes(tB);
-        });
-      }
-      if (!found) { setBotStatus("Game not found on ESPN"); return; }
-
-      const sA = found.awayScore, sB = found.homeScore;
-      setScoreA(sA); setScoreB(sB);
-      const status = mapStatus(found.status);
-      setBotLive(status === "in progress" || status === "halftime");
-      setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
-
-      // Always fetch play-by-play to retroactively fill all past TV timeouts
-      if (game.espnGameId) {
-        try {
-          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${path}`);
-          const pbpData = await pbpRes.json();
-          const tvPlays = (pbpData.plays || []).filter(p =>
-            (p.text||"").toLowerCase().includes("official tv timeout")
-          );
-
-          if (tvPlays.length > 0) {
-            const slotMap = mapTvTimeoutsToSlots(tvPlays);
-            const updatedResults = { ...game.results };
-            let newLocks = 0;
-
-            Object.entries(slotMap).forEach(([slotId, play]) => {
-              // Only auto-fill slots that are NOT yet locked by the user
-              if (!updatedResults[slotId]?.locked) {
-                const tvScoreA = play.awayScore ?? sA;
-                const tvScoreB = play.homeScore ?? sB;
-                const digit = calcDigit(tvScoreA, tvScoreB);
-                const winner = game.assignments[digit] || null;
-                updatedResults[slotId] = {
-                  scoreA: tvScoreA, scoreB: tvScoreB,
-                  digit, winner, locked: false, paid: false,
-                  pending: true // flagged as "ready to lock" but not yet confirmed
-                };
-                newLocks++;
-              }
-            });
-
-            if (newLocks > 0) onUpdate({ results: updatedResults });
-
-            // Notify for the most recent NEW TV timeout
-            const latest = tvPlays[tvPlays.length - 1];
-            const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
-            if (tvKey !== lastNotifiedKey.current) {
-              lastNotifiedKey.current = tvKey;
-              const tvScoreA = latest.awayScore ?? sA;
-              const tvScoreB = latest.homeScore ?? sB;
-              const digit = calcDigit(tvScoreA, tvScoreB);
-              const winner = game.assignments[digit] || null;
-              setScoreA(tvScoreA); setScoreB(tvScoreB);
-              setBotStatus(`📺 TV Timeout detected! Score: ${tvScoreA}–${tvScoreB} · Digit ${digit}`);
-              onToast(winner
-                ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvScoreA}–${tvScoreB})`
-                : `📺 TV Timeout! Digit ${digit} — no player assigned`
-              );
-              if (Notification.permission === "granted") {
-                new Notification("⏱ Official TV Timeout!", {
-                  body: winner
-                    ? `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit}  ·  ${winner} wins`
-                    : `${game.teamA} ${tvScoreA} – ${tvScoreB} ${game.teamB}  ·  Digit ${digit} — unassigned`
-                });
-              }
-            }
-          }
-        } catch { /* play-by-play failed silently */ }
-      }
-
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (botRunning) timerRef.current = setTimeout(fetchScores, getInterval(status));
-    } catch {
-      setBotStatus("Fetch failed — retrying");
-      if (botRunning) timerRef.current = setTimeout(fetchScores, 30000);
-    }
-  }, [game, botRunning]);
-
-  // Challenge — re-fetch ESPN play-by-play to verify official TV timeout score
+  // Challenge — fetch ESPN play-by-play and find the TV timeout matching the SELECTED slot
   const challenge = async () => {
     if (!game.espnGameId) { setChallengeResult({ error: "No ESPN game linked — select a game in Setup first." }); return; }
     setChallenging(true); setChallengeResult(null);
     try {
-      const res = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball"}`);
+      const path = SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball";
+      const res = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${path}`);
       const data = await res.json();
       const plays = data.plays || [];
-      // Find most recent Official TV Timeout
       const tvPlays = plays.filter(p => (p.text||"").toLowerCase().includes("official tv timeout"));
       if (tvPlays.length === 0) {
         setChallengeResult({ error: "No Official TV Timeout found in ESPN play-by-play yet." });
       } else {
-        const last = tvPlays[tvPlays.length - 1];
-        const homeScore = last.homeScore ?? last.home_score ?? "?";
-        const awayScore = last.awayScore ?? last.away_score ?? "?";
-        const clock = last.clock || last.displayClock || "";
-        const period = last.period?.number || last.period || "";
-        setChallengeResult({ awayScore, homeScore, clock, period, text: last.text });
-        // Auto-fill score inputs with challenged scores
-        if (typeof awayScore === "number") setScoreA(awayScore);
-        if (typeof homeScore === "number") setScoreB(homeScore);
+        // Map all TV timeouts to slots, then find the one matching the active slot
+        const h1 = tvPlays.filter(p => p.period === 1);
+        const h2 = tvPlays.filter(p => p.period === 2);
+        const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
+        const h2Slots = ["h2_16","h2_12","h2_8","h2_4","h2_0"];
+        const slotMap = {};
+        h1.forEach((p,i) => { if (i < h1Slots.length) slotMap[h1Slots[i]] = p; });
+        h2.forEach((p,i) => { if (i < h2Slots.length) slotMap[h2Slots[i]] = p; });
+
+        const matchedPlay = activeSlotId ? slotMap[activeSlotId] : null;
+
+        if (!matchedPlay) {
+          // If the selected slot hasn't happened yet, show the most recent one
+          const last = tvPlays[tvPlays.length - 1];
+          const slotLabel = activeSlotId ? TIMEOUT_SLOTS.find(s=>s.id===activeSlotId)?.label : "?";
+          setChallengeResult({
+            error: `No TV timeout found yet for slot ${slotLabel}. Showing most recent timeout instead.`,
+            awayScore: last.awayScore, homeScore: last.homeScore,
+            clock: last.clock, period: last.period, text: last.text
+          });
+          if (typeof last.awayScore === "number") setScoreA(last.awayScore);
+          if (typeof last.homeScore === "number") setScoreB(last.homeScore);
+        } else {
+          const { awayScore, homeScore, clock, period, text } = matchedPlay;
+          setChallengeResult({ awayScore, homeScore, clock, period, text });
+          if (typeof awayScore === "number") setScoreA(awayScore);
+          if (typeof homeScore === "number") setScoreB(homeScore);
+        }
       }
     } catch {
       setChallengeResult({ error: "Could not fetch play-by-play. Try again." });
@@ -1907,13 +1792,8 @@ function TOLivePanel({ game, onUpdate, onToast }) {
     setChallenging(false);
   };
 
-  const startBot = () => { Notification.requestPermission(); setBotRunning(true); setBotStatus("Starting…"); };
-  const stopBot  = () => { setBotRunning(false); if (timerRef.current) clearTimeout(timerRef.current); setBotStatus("Stopped"); setBotLive(false); };
-
-  useEffect(() => {
-    if (botRunning) fetchScores();
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [botRunning]);
+  const startBot = () => { Notification.requestPermission(); setBotRunning(true); };
+  const stopBot  = () => { setBotRunning(false); };
 
   const activeSlot = TIMEOUT_SLOTS.find(s => s.id === activeSlotId);
 
@@ -2059,19 +1939,151 @@ function TOLivePanel({ game, onUpdate, onToast }) {
 }
 
 // ─── Timeout Game View ────────────────────────────────────────────────────────
+// Bot state lives HERE so it persists when switching between setup/board/live/players tabs
 function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
+
+  // ── Bot state lifted up so it survives tab switches ──
+  const [botRunning, setBotRunning] = useState(false);
+  const [botStatus, setBotStatus]   = useState("");
+  const [botLive, setBotLive]       = useState(false);
+  const [scoreA, setScoreA]         = useState(0);
+  const [scoreB, setScoreB]         = useState(0);
+  const timerRef     = useRef(null);
+  const lastNotified = useRef(null);
+  const gameRef      = useRef(game);
+  useEffect(() => { gameRef.current = game; }, [game]);
+
+  const mapStatus = (s) => {
+    const n = (s||"").toLowerCase();
+    if (n.includes("final")) return "final";
+    if (n.includes("half")) return "halftime";
+    if (n.includes("progress")||n.includes("live")) return "in progress";
+    if (n.includes("end")) return "end of period";
+    return "not started";
+  };
+  const getInterval = (status) => {
+    if (status === "final") return 300000;
+    if (status === "in progress") return 30000;
+    if (status === "halftime" || status === "end of period") return 60000;
+    return 120000;
+  };
+  const mapTvTimeoutsToSlots = (tvPlays) => {
+    const h1 = tvPlays.filter(p => p.period === 1);
+    const h2 = tvPlays.filter(p => p.period === 2);
+    const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
+    const h2Slots = ["h2_16","h2_12","h2_8","h2_4","h2_0"];
+    const mapped = {};
+    h1.forEach((p,i) => { if (i < h1Slots.length) mapped[h1Slots[i]] = p; });
+    h2.forEach((p,i) => { if (i < h2Slots.length) mapped[h2Slots[i]] = p; });
+    return mapped;
+  };
+
+  const fetchScores = useCallback(async () => {
+    const g = gameRef.current;
+    if (!g.teamA && !g.teamB) { setBotStatus("Set teams in Setup first"); return; }
+    try {
+      const path = SPORT_CONFIG[g.sport]?.path || "basketball/mens-college-basketball";
+      const dateStr = g.gameDate ? g.gameDate.replace(/-/g,"") : "";
+      const res = await fetch(`${BACKEND}/scores?sport=${path}${dateStr?`&dates=${dateStr}`:""}`);
+      const data = await res.json();
+      const games = data.games || [];
+      let found = g.espnGameId ? games.find(x => x.id === g.espnGameId) : null;
+      if (!found) {
+        const tA=(g.teamA||"").toLowerCase(), tB=(g.teamB||"").toLowerCase();
+        found = games.find(x => {
+          const h=(x.homeTeam||"").toLowerCase(), aw=(x.awayTeam||"").toLowerCase();
+          return h.includes(tA)||h.includes(tB)||aw.includes(tA)||aw.includes(tB);
+        });
+      }
+      if (!found) { setBotStatus("Game not found on ESPN"); return; }
+
+      const sA = found.awayScore, sB = found.homeScore;
+      setScoreA(sA); setScoreB(sB);
+      const status = mapStatus(found.status);
+      setBotLive(status === "in progress" || status === "halftime");
+      setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
+
+      if (g.espnGameId) {
+        try {
+          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${g.espnGameId}&sport=${path}`);
+          const pbpData = await pbpRes.json();
+          const tvPlays = (pbpData.plays||[]).filter(p=>(p.text||"").toLowerCase().includes("official tv timeout"));
+
+          if (tvPlays.length > 0) {
+            const slotMap = mapTvTimeoutsToSlots(tvPlays);
+            const updatedResults = { ...g.results };
+            let changed = false;
+            Object.entries(slotMap).forEach(([slotId, play]) => {
+              if (!updatedResults[slotId]?.locked) {
+                const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
+                const digit = calcDigit(tvA, tvB);
+                updatedResults[slotId] = {
+                  scoreA:tvA, scoreB:tvB, digit,
+                  winner: g.assignments[digit]||null,
+                  locked:false, paid:false, pending:true
+                };
+                changed = true;
+              }
+            });
+            if (changed) onUpdate({ results: updatedResults });
+
+            const latest = tvPlays[tvPlays.length-1];
+            const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
+            if (tvKey !== lastNotified.current) {
+              lastNotified.current = tvKey;
+              const tvA = latest.awayScore ?? sA, tvB = latest.homeScore ?? sB;
+              const digit = calcDigit(tvA, tvB);
+              const winner = g.assignments[digit]||null;
+              setScoreA(tvA); setScoreB(tvB);
+              setBotStatus(`📺 TV Timeout! Score: ${tvA}–${tvB} · Digit ${digit}`);
+              onToast(winner
+                ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvA}–${tvB})`
+                : `📺 TV Timeout! Digit ${digit} — no player assigned`);
+              if (Notification.permission==="granted") {
+                new Notification("⏱ Official TV Timeout!", {
+                  body: winner
+                    ? `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins`
+                    : `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit} — unassigned`
+                });
+              }
+            }
+          }
+        } catch { /* pbp failed silently */ }
+      }
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (botRunning) timerRef.current = setTimeout(fetchScores, getInterval(status));
+    } catch {
+      setBotStatus("Fetch failed — retrying");
+      if (botRunning) timerRef.current = setTimeout(fetchScores, 30000);
+    }
+  }, [botRunning, onUpdate, onToast]);
+
+  useEffect(() => {
+    if (botRunning) fetchScores();
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [botRunning]);
+
+  // Stop bot when game is deleted / component unmounts
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const botProps = { botRunning, setBotRunning, botStatus, setBotStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores };
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div className="inner-tabs">
         {["setup","board","live","players"].map(t => (
-          <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={() => setTab(t)}>{t}</div>
+          <div key={t} className={`inner-tab ${tab===t?"active":""}`} onClick={() => setTab(t)}>
+            {t}
+            {t==="live" && botRunning && <span style={{marginLeft:5,color:"var(--win)",fontSize:9}}>●</span>}
+          </div>
         ))}
       </div>
       <div className="game-content">
         {tab==="setup"   && <TOSetupPanel game={game} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab==="board"   && <TOBoardPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
-        {tab==="live"    && <TOLivePanel  game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab==="live"    && <TOLivePanel  game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
         {tab==="players" && <PlayersPanel />}
       </div>
     </div>
