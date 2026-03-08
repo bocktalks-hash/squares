@@ -256,7 +256,7 @@ html, body, #root {
 }
 
 /* ── Layout ── */
-.app-shell { display:flex; flex-direction:column; height:100vh; }
+.app-shell { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
 .main-area { flex:1; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
 .game-content { flex:1; overflow-y:auto; padding:14px 14px 20px; }
 .game-content::-webkit-scrollbar { width:4px; }
@@ -1950,7 +1950,10 @@ export default function App() {
         </div>
 
         {/* Squares mode */}
-        <div style={{display: mode === "squares" ? "contents" : "none"}}>
+        <div style={{
+          display: mode === "squares" ? "flex" : "none",
+          flexDirection:"column", flex:1, minHeight:0, overflow:"hidden"
+        }}>
           <div className="main-area">
             {activeGame && (
               <GameView
@@ -1978,7 +1981,10 @@ export default function App() {
         </div>
 
         {/* Timeout mode — always mounted so bots keep running when switching modes */}
-        <div style={{display: mode === "timeout" ? "contents" : "none"}}>
+        <div style={{
+          display: mode === "timeout" ? "flex" : "none",
+          flexDirection:"column", flex:1, minHeight:0, overflow:"hidden"
+        }}>
           <TimeoutApp onToast={msg=>setToast(msg)} />
         </div>
       </div>
@@ -3044,7 +3050,7 @@ function TimeoutApp({ onToast }) {
   };
 
   return (
-    <>
+    <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0,overflow:"hidden"}}>
       <div className="main-area">
         {activeGame && (
           <TOGameView
@@ -3069,6 +3075,6 @@ function TimeoutApp({ onToast }) {
         </div>
         <div className="tab-add" onClick={addGame} title="Add game">＋</div>
       </div>
-    </>
+    </div>
   );
 }
