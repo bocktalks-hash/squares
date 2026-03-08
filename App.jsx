@@ -219,6 +219,11 @@ html, body, #root {
   font-family:'DM Sans',sans-serif; overflow:hidden;
   -webkit-font-smoothing:antialiased;
 }
+/* Mobile fix: 100vh includes browser chrome, cutting off bottom tab-bar.
+   dvh = dynamic viewport height (excludes browser UI) on modern browsers. */
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
 
 /* ── Top Bar ── */
 .topbar {
@@ -256,9 +261,16 @@ html, body, #root {
 }
 
 /* ── Layout ── */
-.app-shell { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+.app-shell {
+  display:flex; flex-direction:column; overflow:hidden;
+  height: 100vh; height: 100dvh;
+}
 .main-area { flex:1; overflow:hidden; display:flex; flex-direction:column; min-height:0; }
-.game-content { flex:1; overflow-y:auto; padding:14px 14px 20px; }
+/* Extra bottom padding so content never hides behind the fixed tab-bar */
+.game-content {
+  flex:1; overflow-y:auto;
+  padding:14px 14px calc(46px + env(safe-area-inset-bottom) + 14px);
+}
 .game-content::-webkit-scrollbar { width:4px; }
 .game-content::-webkit-scrollbar-track { background:transparent; }
 .game-content::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
@@ -266,8 +278,9 @@ html, body, #root {
 /* ── Bottom Game Tabs ── */
 .tab-bar {
   display:flex; align-items:stretch; background:var(--surface);
-  border-top:1px solid var(--border); flex-shrink:0; min-height:46px;
-  position:relative;
+  border-top:1px solid var(--border); min-height:46px;
+  position:fixed; bottom:0; left:0; right:0; z-index:200;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .tab-bar-scroll {
   flex:1; display:flex; align-items:stretch;
@@ -289,6 +302,10 @@ html, body, #root {
 }
 .tab-item:hover .tab-close { opacity:1; }
 .tab-item .tab-close:hover { color:var(--danger); }
+/* On touch devices, always show the close button */
+@media (hover: none) {
+  .tab-item .tab-close { opacity:0.6; }
+}
 .tab-add {
   flex-shrink:0; width:48px; min-width:48px; cursor:pointer; color:var(--text-dim);
   font-size:20px; display:flex; align-items:center; justify-content:center;
