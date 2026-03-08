@@ -30,10 +30,33 @@ function randomPairs() {
 }
 
 const SPORT_CONFIG = {
-  nba:   { label:"NBA", path:"basketball/nba", periods:4, periodLabels:{1:"Q1",2:"Q2",3:"Q3",4:"Final"} },
-  ncaab: { label:"NCAA Basketball", path:"basketball/mens-college-basketball", periods:2, periodLabels:{1:"1st Half",2:"Final"} },
-  nfl:   { label:"NFL", path:"football/nfl", periods:4, periodLabels:{1:"Q1",2:"Half",3:"Q3",4:"Final"} },
-  ncaaf: { label:"College Football", path:"football/college-football", periods:4, periodLabels:{1:"Q1",2:"Half",3:"Q3",4:"Final"} },
+  nba:   { label:"NBA", path:"basketball/nba", periods:4, periodLabels:{1:"Q1",2:"Q2",3:"Q3",4:"Final"},
+    payoutOptions:[
+      { key:"quarters", label:"All Quarters (Q1 · Q2 · Q3 · Final)", periods:[1,2,3,4] },
+      { key:"halves",   label:"Halves Only (Q2 · Final)",             periods:[2,4]     },
+      { key:"final",    label:"Final Only",                           periods:[4]       },
+    ]
+  },
+  ncaab: { label:"NCAA Basketball", path:"basketball/mens-college-basketball", periods:2, periodLabels:{1:"1st Half",2:"Final"},
+    payoutOptions:[
+      { key:"halves", label:"Both Halves (1st Half · Final)", periods:[1,2] },
+      { key:"final",  label:"Final Only",                     periods:[2]   },
+    ]
+  },
+  nfl:   { label:"NFL", path:"football/nfl", periods:4, periodLabels:{1:"Q1",2:"Half",3:"Q3",4:"Final"},
+    payoutOptions:[
+      { key:"quarters", label:"All Quarters (Q1 · Half · Q3 · Final)", periods:[1,2,3,4] },
+      { key:"halves",   label:"Halves Only (Half · Final)",             periods:[2,4]     },
+      { key:"final",    label:"Final Only",                             periods:[4]       },
+    ]
+  },
+  ncaaf: { label:"College Football", path:"football/college-football", periods:4, periodLabels:{1:"Q1",2:"Half",3:"Q3",4:"Final"},
+    payoutOptions:[
+      { key:"quarters", label:"All Quarters (Q1 · Half · Q3 · Final)", periods:[1,2,3,4] },
+      { key:"halves",   label:"Halves Only (Half · Final)",             periods:[2,4]     },
+      { key:"final",    label:"Final Only",                             periods:[4]       },
+    ]
+  },
 };
 
 const TEAM_ABBR = {
@@ -112,6 +135,10 @@ function makeNewGame(id) {
     botLastPeriodKey:null,
     botLastScore:null,
     botLastGameStatus:null,
+    payoutStructure: "quarters", // which periods pay out
+    totalPot: 0,                 // total dollar amount in the pot
+    costPerSquare: 0,
+    payments: {},
   };
 }
 
@@ -128,6 +155,21 @@ function getPeriodLabel(game, q) {
 }
 function getTotalPeriods(game) {
   return SPORT_CONFIG[game.sport]?.periods || 4;
+}
+
+// Returns the list of period numbers that actually pay out for this game's payout structure
+function getPayoutPeriods(game) {
+  const opts = SPORT_CONFIG[game.sport]?.payoutOptions || [];
+  const chosen = opts.find(o => o.key === game.payoutStructure) || opts[0];
+  return chosen ? chosen.periods : [getTotalPeriods(game)];
+}
+
+// Dollar amount paid out per winning period
+function getPerPeriodPayout(game) {
+  const pot = parseFloat(game.totalPot) || 0;
+  const periods = getPayoutPeriods(game);
+  if (!periods.length) return 0;
+  return pot / periods.length;
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -224,9 +266,14 @@ html, body, #root {
 /* ── Bottom Game Tabs ── */
 .tab-bar {
   display:flex; align-items:stretch; background:var(--surface);
-  border-top:1px solid var(--border); flex-shrink:0; overflow-x:auto;
-  scrollbar-width:none; min-height:46px;
+  border-top:1px solid var(--border); flex-shrink:0; min-height:46px;
+  position:relative;
 }
+.tab-bar-scroll {
+  flex:1; display:flex; align-items:stretch;
+  overflow-x:auto; scrollbar-width:none; min-width:0;
+}
+.tab-bar-scroll::-webkit-scrollbar { display:none; }
 .tab-bar::-webkit-scrollbar { display:none; }
 .tab-item {
   flex-shrink:0; padding:0 16px; cursor:pointer; font-size:11px; font-weight:600;
@@ -243,8 +290,10 @@ html, body, #root {
 .tab-item:hover .tab-close { opacity:1; }
 .tab-item .tab-close:hover { color:var(--danger); }
 .tab-add {
-  flex-shrink:0; padding:0 16px; cursor:pointer; color:var(--text-dim);
-  font-size:20px; display:flex; align-items:center; transition:all .15s;
+  flex-shrink:0; width:48px; min-width:48px; cursor:pointer; color:var(--text-dim);
+  font-size:20px; display:flex; align-items:center; justify-content:center;
+  transition:all .15s; border-left:1px solid var(--border);
+  background:var(--surface);
 }
 .tab-add:hover { color:var(--court-bright); background:rgba(51,102,204,0.06); }
 
@@ -652,6 +701,34 @@ html, body, #root {
   .sq-cell { height:40px; }
   .score-num { font-size:42px; }
 }
+
+/* ── Payment / Payout Panels ── */
+.payment-summary { display:flex; gap:8px; flex-wrap:wrap; }
+.pay-stat {
+  flex:1; min-width:72px; background:var(--surface2); border:1px solid var(--border);
+  border-radius:8px; padding:10px 12px; text-align:center;
+}
+.pay-stat .ps-val { font-family:'Bebas Neue',sans-serif; font-size:22px; color:var(--court-bright); line-height:1; }
+.pay-stat .ps-label { font-size:9px; color:var(--text-dim); letter-spacing:.8px; text-transform:uppercase; margin-top:3px; }
+.pay-stat.ps-green .ps-val { color:var(--win); }
+.pay-stat.ps-warn .ps-val { color:var(--warn); }
+.payment-table { width:100%; border-collapse:collapse; }
+.payment-table th {
+  font-size:9px; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim);
+  font-weight:600; padding:6px 8px; text-align:left; border-bottom:1px solid var(--border);
+}
+.payment-table td { padding:9px 8px; border-bottom:1px solid rgba(35,45,63,0.6); font-size:13px; vertical-align:middle; }
+.payment-table tr:last-child td { border-bottom:none; }
+.payment-table tr:hover td { background:rgba(255,255,255,0.018); }
+.paid-toggle {
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px;
+  border:1px solid; transition:all .15s; user-select:none; white-space:nowrap;
+}
+.paid-toggle.paid { color:var(--win); border-color:rgba(34,197,94,0.4); background:var(--win-dim); }
+.paid-toggle.unpaid { color:var(--text-dim); border-color:var(--border); background:transparent; }
+.paid-toggle.paid:hover { background:rgba(34,197,94,0.2); }
+.paid-toggle.unpaid:hover { color:var(--text-mid); border-color:var(--border-bright); }
 `;
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -691,6 +768,188 @@ function AssignModal({ game, cell, onAssign, onClear, onClose }) {
             Cancel
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Squares Payout Panel ─────────────────────────────────────────────────────
+function SquaresPayoutPanel({ game, onUpdate }) {
+  const payments = game.payments || {};
+  const totalPot = parseFloat(game.totalPot) || 0;
+  const payoutPeriods = getPayoutPeriods(game);
+  const perPeriod = getPerPeriodPayout(game);
+  const results = game.results || [];  // null guard for games saved before this field existed
+
+  // Count squares per player from the grid
+  const squareCounts = {};
+  game.grid.flat().forEach(name => {
+    if (name) squareCounts[name] = (squareCounts[name] || 0) + 1;
+  });
+
+  const allPlayers = Array.from(new Set([...game.players, ...Object.keys(squareCounts)])).sort();
+  const totalSquares = game.grid.flat().filter(Boolean).length;
+
+  // How many payout slots each player has won
+  const winsByPlayer = {};
+  allPlayers.forEach(p => { winsByPlayer[p] = []; });
+  results.forEach(r => {
+    if (r.winnerName && payoutPeriods.includes(r.quarter)) {
+      if (!winsByPlayer[r.winnerName]) winsByPlayer[r.winnerName] = [];
+      winsByPlayer[r.winnerName].push(r);
+    }
+  });
+
+  const togglePaid = (player) => {
+    onUpdate({ payments: { ...payments, [player]: !payments[player] } });
+  };
+
+  // Per-player: how much they owe (buy-in) vs how much they've won
+  const costPerSquare = totalSquares > 0 && totalPot > 0
+    ? (totalPot / totalSquares)
+    : (parseFloat(game.costPerSquare) || 0);
+
+  const paidInTotal = allPlayers.filter(p => payments[p])
+    .reduce((s, p) => s + (squareCounts[p] || 0) * costPerSquare, 0);
+  const outstandingTotal = allPlayers.filter(p => !payments[p])
+    .reduce((s, p) => s + (squareCounts[p] || 0) * costPerSquare, 0);
+  const paidOutTotal = results
+    .filter(r => payoutPeriods.includes(r.quarter))
+    .reduce((s) => s + perPeriod, 0);
+
+  const periodSplit = payoutPeriods.map(q => ({
+    q,
+    label: getPeriodLabel(game, q),
+    result: results.find(r => r.quarter === q),
+    payout: perPeriod,
+  }));
+
+  return (
+    <div>
+      {/* Payout schedule */}
+      <div className="card">
+        <div className="card-title">💰 Payout Schedule</div>
+        {totalPot === 0 ? (
+          <div style={{fontSize:13,color:"var(--warn)",background:"var(--warn-dim)",borderRadius:7,padding:"10px 12px",border:"1px solid rgba(245,158,11,0.2)"}}>
+            ⚠ Set the Total Pot in Setup → Step 1 to see payout amounts.
+          </div>
+        ) : (
+          <>
+            <div className="payment-summary" style={{marginBottom:14}}>
+              <div className="pay-stat">
+                <div className="ps-val">${totalPot}</div>
+                <div className="ps-label">Total Pot</div>
+              </div>
+              <div className="pay-stat">
+                <div className="ps-val">{payoutPeriods.length}</div>
+                <div className="ps-label">Payouts</div>
+              </div>
+              <div className="pay-stat ps-green">
+                <div className="ps-val">${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)}</div>
+                <div className="ps-label">Per Winner</div>
+              </div>
+              <div className="pay-stat" style={{borderColor: paidOutTotal > 0 ? "rgba(34,197,94,0.25)" : undefined}}>
+                <div className="ps-val" style={{color: paidOutTotal > 0 ? "var(--win)" : "var(--text-dim)"}}>
+                  ${paidOutTotal % 1 === 0 ? paidOutTotal : paidOutTotal.toFixed(2)}
+                </div>
+                <div className="ps-label">Paid Out</div>
+              </div>
+            </div>
+
+            {/* Per-period breakdown */}
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {periodSplit.map(({ q, label, result, payout }) => (
+                <div key={q} style={{
+                  display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+                  background: result ? "rgba(34,197,94,0.07)" : "var(--surface2)",
+                  border: `1px solid ${result ? "rgba(34,197,94,0.25)" : "var(--border)"}`,
+                  borderRadius:8,
+                }}>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:"var(--court-bright)",minWidth:52,letterSpacing:.5}}>{label}</div>
+                  <div style={{flex:1,fontSize:13}}>
+                    {result ? (
+                      <span style={{fontWeight:700,color:"var(--win)"}}>{result.winnerName || "—"}</span>
+                    ) : (
+                      <span style={{color:"var(--text-dim)",fontSize:12}}>Not yet locked</span>
+                    )}
+                    {result && <span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{result.scoreA}–{result.scoreB}</span>}
+                  </div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color: result ? "var(--win)" : "var(--text-dim)"}}>
+                    ${payout % 1 === 0 ? payout : payout.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Buy-in tracker */}
+      <div className="card">
+        <div className="card-title">💵 Buy-In Tracker</div>
+
+        {/* Summary */}
+        {totalSquares > 0 && costPerSquare > 0 && (
+          <div className="payment-summary" style={{marginBottom:14}}>
+            <div className="pay-stat">
+              <div className="ps-val">{totalSquares}</div>
+              <div className="ps-label">Squares Sold</div>
+            </div>
+            <div className="pay-stat ps-green">
+              <div className="ps-val">${paidInTotal % 1 === 0 ? paidInTotal : paidInTotal.toFixed(2)}</div>
+              <div className="ps-label">Collected</div>
+            </div>
+            <div className={`pay-stat ${outstandingTotal > 0 ? "ps-warn" : "ps-green"}`}>
+              <div className="ps-val">${outstandingTotal % 1 === 0 ? outstandingTotal : outstandingTotal.toFixed(2)}</div>
+              <div className="ps-label">Outstanding</div>
+            </div>
+          </div>
+        )}
+
+        {allPlayers.length === 0 ? (
+          <div style={{fontSize:13,color:"var(--text-dim)"}}>No players assigned yet — add players in Setup and auto-assign the grid.</div>
+        ) : (
+          <table className="payment-table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th style={{textAlign:"center"}}>Sq</th>
+                {costPerSquare > 0 && <th style={{textAlign:"right"}}>Owes</th>}
+                <th style={{textAlign:"right"}}>Winnings</th>
+                <th style={{textAlign:"right",paddingRight:14}}>Paid In</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allPlayers.map(player => {
+                const count = squareCounts[player] || 0;
+                const owes = count * costPerSquare;
+                const wins = winsByPlayer[player] || [];
+                const earned = wins.length * perPeriod;
+                const paid = !!payments[player];
+                const net = earned - owes;
+                return (
+                  <tr key={player}>
+                    <td style={{fontWeight:600,color:"var(--text)"}}>{player}</td>
+                    <td style={{textAlign:"center",color:"var(--court-bright)",fontFamily:"'Bebas Neue',sans-serif",fontSize:16}}>{count}</td>
+                    {costPerSquare > 0 && (
+                      <td style={{textAlign:"right",color:paid?"var(--text-dim)":"var(--warn)",fontWeight:600}}>
+                        ${owes % 1 === 0 ? owes : owes.toFixed(2)}
+                      </td>
+                    )}
+                    <td style={{textAlign:"right",fontWeight:700,color:earned>0?"var(--win)":earned<0?"var(--danger)":"var(--text-dim)"}}>
+                      {earned > 0 ? `$${earned % 1 === 0 ? earned : earned.toFixed(2)}` : "—"}
+                    </td>
+                    <td style={{textAlign:"right",paddingRight:14}}>
+                      <span className={`paid-toggle ${paid?"paid":"unpaid"}`} onClick={() => togglePaid(player)}>
+                        {paid ? "✓ Paid" : "Unpaid"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -822,12 +1081,42 @@ function SetupPanel({ game, onUpdate, onDelete }) {
         <div className="card-title">Step 1 — Pick Sport & Date</div>
         <div className="field">
           <label>Sport</label>
-          <select value={game.sport} onChange={e => onUpdate({ sport: e.target.value, teamA:"", teamB:"", name:"", espnGameId:null })}>
+          <select value={game.sport} onChange={e => onUpdate({ sport: e.target.value, teamA:"", teamB:"", name:"", espnGameId:null, payoutStructure: SPORT_CONFIG[e.target.value]?.payoutOptions?.[0]?.key || "quarters" })}>
             {Object.entries(SPORT_CONFIG).map(([k,v]) => (
               <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
         </div>
+
+        <div className="field">
+          <label>Payout Structure</label>
+          <select value={game.payoutStructure || SPORT_CONFIG[game.sport]?.payoutOptions?.[0]?.key}
+            onChange={e => onUpdate({ payoutStructure: e.target.value })}>
+            {(SPORT_CONFIG[game.sport]?.payoutOptions || []).map(o => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label>Total Pot ($)</label>
+          <div style={{display:"flex",alignItems:"center"}}>
+            <span style={{background:"var(--surface3)",border:"1px solid var(--border)",borderRight:"none",
+              borderRadius:"7px 0 0 7px",padding:"9px 11px",color:"var(--text-mid)",fontSize:14,fontWeight:600}}>$</span>
+            <input type="number" min="0" step="1"
+              value={game.totalPot || ""}
+              placeholder="0"
+              onChange={e => onUpdate({ totalPot: parseFloat(e.target.value) || 0 })}
+              style={{flex:1,background:"var(--surface2)",border:"1px solid var(--border)",
+                borderRadius:"0 7px 7px 0",padding:"9px 12px",color:"var(--text)",fontSize:14,outline:"none"}} />
+          </div>
+          {(game.totalPot > 0) && (
+            <div style={{fontSize:11,color:"var(--text-dim)",marginTop:5}}>
+              {getPayoutPeriods(game).length} payout{getPayoutPeriods(game).length!==1?"s":""} · <span style={{color:"var(--court-bright)",fontWeight:600}}>${getPerPeriodPayout(game) % 1 === 0 ? getPerPeriodPayout(game) : getPerPeriodPayout(game).toFixed(2)}</span> each
+            </div>
+          )}
+        </div>
+
         <div className="field" style={{marginBottom:0}}>
           <label>Date</label>
           <input
@@ -1082,10 +1371,22 @@ function GridPanel({ game, onUpdate }) {
 // ─── Scores Panel ─────────────────────────────────────────────────────────────
 function ScoresPanel({ game, onUpdate, onToast, botProps }) {
   const { scoreA, setScoreA, scoreB, setScoreB, botRunning, setBotRunning, botStatus, setBotStatus, botLive, setBotLive, timerRef } = botProps;
-  const [currentQ, setCurrentQ] = useState(game.currentQuarter || 1);
+
+  // Only ever cycle through payout periods
+  const payoutPeriods = getPayoutPeriods(game);
+  const perPeriod = getPerPeriodPayout(game);
   const periods = getTotalPeriods(game);
 
-  useEffect(() => { setCurrentQ(game.currentQuarter || 1); }, [game.currentQuarter]);
+  // currentQ tracks which payout period is selected — defaults to first unpaid payout period
+  const firstUnlocked = payoutPeriods.find(q => !(game.results||[]).some(r => r.quarter === q)) || payoutPeriods[payoutPeriods.length - 1];
+  const [currentQ, setCurrentQ] = useState(firstUnlocked);
+
+  // Keep currentQ pointing at the first still-unlocked payout period as results come in
+  useEffect(() => {
+    const unlocked = payoutPeriods.find(q => !(game.results||[]).some(r => r.quarter === q));
+    if (unlocked && unlocked !== currentQ) setCurrentQ(unlocked);
+  // eslint-disable-next-line
+  }, [game.results]);
 
   const getInterval = (status) => {
     if (!status) return 120000;
@@ -1104,13 +1405,22 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
     return "not started";
   };
 
-  const detectPeriodKey = (espnGame) => {
-    const s = espnGame.statusName || "";
-    const period = espnGame.period || 0;
+  // Map ESPN period/status to which payout-period this is
+  const detectPayoutPeriodKey = (espnGame) => {
     const status = mapStatus(espnGame.status);
-    if (status==="final") return `final`;
-    if (status==="halftime") return `half`;
-    if (status==="end of period") return `endq${period}`;
+    const period = espnGame.period || 0;
+    // "final" always maps to the last payout period
+    if (status === "final") return `payout_${payoutPeriods[payoutPeriods.length - 1]}`;
+    // "halftime" maps to the payout period that covers Q2 (for 4-period sports) or Q1 (for 2-period)
+    if (status === "halftime") {
+      const halfQ = periods === 2 ? 1 : 2;
+      if (payoutPeriods.includes(halfQ)) return `payout_${halfQ}`;
+      return null; // halftime not a payout period
+    }
+    // end of period — check if that period number is a payout period
+    if (status === "end of period" && payoutPeriods.includes(period)) {
+      return `payout_${period}`;
+    }
     return null;
   };
 
@@ -1128,11 +1438,8 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
       const res = await fetch(url);
       const data = await res.json();
       const games = data.games || [];
-      // Show debug info of what came back
-      const gameNames = games.map(g => g.id + ":" + g.awayTeam + " vs " + g.homeTeam).join(" | ");
-      console.log("ESPN returned:", gameNames);
+      console.log("ESPN returned:", games.map(g => g.id + ":" + g.awayTeam + " vs " + g.homeTeam).join(" | "));
       console.log("Looking for ID:", game.espnGameId);
-      // Match by ESPN game ID first (most reliable), fall back to team name
       let found = game.espnGameId ? games.find(g => g.id === game.espnGameId) : null;
       if (!found) {
         const teamAl = (game.teamA||"").toLowerCase();
@@ -1144,7 +1451,7 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
         });
       }
       if (!found) {
-        setBotStatus(`Not found — fetched ${games.length} games for ${dateStr||"today"}. IDs: ${games.slice(0,3).map(g=>g.id).join(",")}…`);
+        setBotStatus(`Not found — fetched ${games.length} games for ${dateStr||"today"}.`);
         return;
       }
 
@@ -1154,26 +1461,27 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
       setBotLive(status==="in progress");
       setBotStatus(`${found.shortDetail||found.status} · Updated ${new Date().toLocaleTimeString()}`);
 
-
-      const periodKey = detectPeriodKey(found);
-      if (periodKey && periodKey !== game.botLastPeriodKey) {
-        // Auto-detected a period end
-        const isCheckpoint =
-          status==="final" ||
-          status==="halftime" ||
-          status==="end of period";
-        if (isCheckpoint) {
-          onUpdate({ botLastPeriodKey: periodKey, botLastScore:{a:sA,b:sB} });
-          const winner = getWinner(game, sA, sB);
-          const ql = getPeriodLabel(game, currentQ);
-          onToast(winner ? `${ql}: ${winner} wins! (${sA}-${sB})` : `${ql}: No winner found`);
-          if (Notification.permission==="granted") {
-            new Notification("Squares — Period End!", { body: winner ? `${ql}: ${winner} wins! Score: ${sA}-${sB}` : `${ql} ended: ${sA}-${sB}` });
-          }
+      // Only notify/auto-advance on PAYOUT period endings
+      const payoutKey = detectPayoutPeriodKey(found);
+      if (payoutKey && payoutKey !== game.botLastPeriodKey) {
+        onUpdate({ botLastPeriodKey: payoutKey, botLastScore:{a:sA,b:sB} });
+        const winner = getWinner(game, sA, sB);
+        // Figure out which payout period this is to label it correctly
+        const matchedQ = parseInt(payoutKey.split("_")[1]);
+        const ql = getPeriodLabel(game, matchedQ);
+        const payoutAmt = perPeriod > 0 ? ` · $${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)}` : "";
+        onToast(winner
+          ? `💰 ${ql}: ${winner} wins!${payoutAmt} (${sA}–${sB})`
+          : `${ql} ended: ${sA}–${sB} — no winner`);
+        if (Notification.permission==="granted") {
+          new Notification(`💰 Squares — ${ql} Final!`, {
+            body: winner
+              ? `${winner} wins${payoutAmt}! Score: ${sA}–${sB}`
+              : `Score: ${sA}–${sB} — no winner assigned`
+          });
         }
       }
 
-      // Reschedule with smart interval
       if (timerRef.current) clearTimeout(timerRef.current);
       if (botRunning) {
         timerRef.current = setTimeout(fetchScores, getInterval(status));
@@ -1204,20 +1512,24 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
   }, [botRunning]);
 
   const liveWinner = getWinner(game, scoreA, scoreB);
-  const lockedPeriods = new Set(game.results.map(r=>r.quarter));
+  const lockedPeriods = new Set((game.results||[]).map(r=>r.quarter));
 
   const lockPeriod = () => {
     if (lockedPeriods.has(currentQ)) return;
     const winner = getWinner(game, scoreA, scoreB);
     const result = { quarter:currentQ, scoreA, scoreB,
       digitA:scoreA%10, digitB:scoreB%10, winnerName:winner||"—" };
-    const newResults = [...game.results, result];
-    const nextQ = Math.min(currentQ+1, periods);
-    onUpdate({ results:newResults, currentQuarter:nextQ });
-    setCurrentQ(nextQ);
+    const newResults = [...(game.results||[]), result];
+    // Advance to next PAYOUT period, not just +1
+    const nextPayoutQ = payoutPeriods.find(q => q > currentQ) || currentQ;
+    onUpdate({ results:newResults, currentQuarter:nextPayoutQ });
+    setCurrentQ(nextPayoutQ);
     const label = getPeriodLabel(game, currentQ);
-    onToast(winner ? `${label} locked! ${winner} wins! 🏆` : `${label} locked — no winner`);
+    const payoutAmt = perPeriod > 0 ? ` · $${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)}` : "";
+    onToast(winner ? `${label} locked! ${winner} wins!${payoutAmt} 🏆` : `${label} locked — no winner`);
   };
+
+  const allPayoutsDone = payoutPeriods.every(q => lockedPeriods.has(q));
 
   return (
     <div>
@@ -1271,18 +1583,40 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
         ) : null}
       </div>
 
-      {/* Manual Entry */}
+      {/* Lock a Period — only shows payout periods */}
       <div className="card">
-        <div className="card-title">Lock a Period</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div className="card-title" style={{margin:0}}>
+            {payoutPeriods.length < periods ? "Lock a Payout Period" : "Lock a Period"}
+          </div>
+          {perPeriod > 0 && (
+            <span style={{fontSize:11,color:"var(--win)",fontWeight:700,fontFamily:"'Bebas Neue',sans-serif",letterSpacing:.5}}>
+              ${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)} / win
+            </span>
+          )}
+        </div>
+
+        {/* Only payout period tabs */}
         <div className="period-tabs">
-          {Array.from({length:periods},(_,i)=>i+1).map(q=>(
+          {payoutPeriods.map(q => (
             <div key={q}
               className={`period-tab ${q===currentQ?"active":""} ${lockedPeriods.has(q)?"locked":""}`}
-              onClick={()=>setCurrentQ(q)}>
-              {getPeriodLabel(game,q)} {lockedPeriods.has(q)?"✓":""}
+              onClick={() => setCurrentQ(q)}>
+              {getPeriodLabel(game, q)}
+              {lockedPeriods.has(q) ? " ✓" : ""}
             </div>
           ))}
         </div>
+
+        {/* Show context if non-payout periods exist */}
+        {payoutPeriods.length < periods && (
+          <div style={{fontSize:11,color:"var(--text-dim)",marginBottom:12,padding:"6px 10px",background:"var(--surface2)",borderRadius:6,border:"1px solid var(--border)"}}>
+            Tracking: <span style={{color:"var(--court-bright)",fontWeight:600}}>
+              {payoutPeriods.map(q => getPeriodLabel(game, q)).join(" · ")}
+            </span>
+            {" "}— other periods don't pay out
+          </div>
+        )}
 
         <div className="score-row">
           <label>{makeAbbr(game.teamA)||"A"}</label>
@@ -1303,9 +1637,16 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
 
         {liveWinner ? (
           <div className="winner-banner">
-            <div className="wb-label">Winner if locked now</div>
+            <div className="wb-label">
+              {lockedPeriods.has(currentQ) ? `${getPeriodLabel(game,currentQ)} Winner` : "Winner if locked now"}
+            </div>
             <div className="wb-eq">…{scoreA%10} + …{scoreB%10} = <strong style={{color:"var(--court-bright)",fontSize:14}}>{(scoreA+scoreB)%10}</strong></div>
             <div className="wb-name">🏆 {liveWinner}</div>
+            {perPeriod > 0 && (
+              <div style={{fontSize:11,color:"var(--win)",marginTop:4,fontWeight:600}}>
+                ${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)} payout
+              </div>
+            )}
           </div>
         ) : (
           <div style={{textAlign:"center",padding:"14px 0",color:"var(--text-dim)",fontSize:13,background:"var(--surface2)",borderRadius:8,margin:"8px 0"}}>
@@ -1314,10 +1655,16 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
           </div>
         )}
 
-        <button className="btn btn-win" style={{width:"100%",marginTop:10,padding:"12px",fontSize:14}}
-          onClick={lockPeriod} disabled={lockedPeriods.has(currentQ)}>
-          {lockedPeriods.has(currentQ) ? `✓ ${getPeriodLabel(game,currentQ)} Already Locked` : `🔒 Lock ${getPeriodLabel(game,currentQ)}`}
-        </button>
+        {allPayoutsDone ? (
+          <div style={{textAlign:"center",padding:"12px",background:"var(--win-dim)",borderRadius:8,marginTop:10,border:"1px solid rgba(34,197,94,0.3)",color:"var(--win)",fontWeight:700,fontSize:13}}>
+            🏁 All payout periods locked!
+          </div>
+        ) : (
+          <button className="btn btn-win" style={{width:"100%",marginTop:10,padding:"12px",fontSize:14}}
+            onClick={lockPeriod} disabled={lockedPeriods.has(currentQ)}>
+            {lockedPeriods.has(currentQ) ? `✓ ${getPeriodLabel(game,currentQ)} Already Locked` : `🔒 Lock ${getPeriodLabel(game,currentQ)}`}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1325,26 +1672,45 @@ function ScoresPanel({ game, onUpdate, onToast, botProps }) {
 
 // ─── History Panel ────────────────────────────────────────────────────────────
 function HistoryPanel({ game, onUpdate }) {
-  if (!game.results.length) return (
+  const results = game.results || [];
+  if (!results.length) return (
     <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">No results locked yet.<br/>Lock a period in the Scores tab.</div></div>
   );
 
   const unlockPeriod = (quarter) => {
-    onUpdate({ results: game.results.filter(r => r.quarter !== quarter) });
+    onUpdate({ results: results.filter(r => r.quarter !== quarter) });
   };
+
+  const payoutPeriods = getPayoutPeriods(game);
+  const perPeriod = getPerPeriodPayout(game);
 
   return (
     <div className="card">
       <div className="card-title">Results History</div>
-      {game.results.map((r,i)=>(
-        <div key={i} className="result-row">
-          <div className="result-period">{getPeriodLabel(game,r.quarter)}</div>
-          <div className="result-score">{r.scoreA}–{r.scoreB}</div>
-          <div className="result-name">{r.winnerName}</div>
-          <div className="result-digits" style={{marginRight:8}}>…{r.digitA}+…{r.digitB}={(r.digitA+r.digitB)%10}</div>
-          <button className="unlock-btn" onClick={() => unlockPeriod(r.quarter)} title="Unlock to re-enter">↩ Unlock</button>
-        </div>
-      ))}
+      {results.map((r,i)=>{
+        const isPayout = payoutPeriods.includes(r.quarter);
+        return (
+          <div key={i} className="result-row">
+            <div className="result-period">
+              {getPeriodLabel(game,r.quarter)}
+              {perPeriod > 0 && isPayout && (
+                <span style={{fontSize:9,color:"var(--court-bright)",marginLeft:4,fontWeight:700}}>$</span>
+              )}
+            </div>
+            <div className="result-score">{r.scoreA}–{r.scoreB}</div>
+            <div className="result-name" style={{color: isPayout ? "var(--win)" : "var(--text-mid)"}}>
+              {r.winnerName}
+              {perPeriod > 0 && isPayout && (
+                <span style={{fontSize:11,color:"var(--court-bright)",marginLeft:6,fontWeight:600}}>
+                  +${perPeriod % 1 === 0 ? perPeriod : perPeriod.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <div className="result-digits" style={{marginRight:8}}>…{r.digitA}+…{r.digitB}={(r.digitA+r.digitB)%10}</div>
+            <button className="unlock-btn" onClick={() => unlockPeriod(r.quarter)} title="Unlock to re-enter">↩ Unlock</button>
+          </div>
+        );
+      })}
       <div style={{fontSize:11,color:"var(--text-dim)",marginTop:12,padding:"8px 0",borderTop:"1px solid var(--border)"}}>
         Tap Unlock to correct a result — this removes the lock so you can re-enter the score.
       </div>
@@ -1376,6 +1742,7 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
           {id:"grid",    label:"Grid",    icon:"⬜"},
           {id:"scores",  label:"Live",    icon:"📡"},
           {id:"players", label:"Players", icon:"👥"},
+          {id:"payout",  label:"Payout",  icon:"💰"},
           {id:"history", label:"History", icon:"📋"},
         ].map(t=>(
           <div key={t.id} className={`inner-tab ${tab===t.id?"active":""}`} onClick={()=>setTab(t.id)}>
@@ -1389,6 +1756,7 @@ function GameView({ game, onUpdate, onToast, onDelete }) {
         {tab==="grid"    && <GridPanel game={game} onUpdate={onUpdate} />}
         {tab==="scores"  && <ScoresPanel game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
         {tab==="players" && <PlayersPanel />}
+        {tab==="payout"  && <SquaresPayoutPanel game={game} onUpdate={onUpdate} />}
         {tab==="history" && <HistoryPanel game={game} onUpdate={onUpdate} />}
       </div>
     </div>
@@ -1595,14 +1963,16 @@ export default function App() {
             )}
           </div>
           <div className="tab-bar">
-            {games.map(g=>(
-              <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
-                {tabLabel(g)}
-                {games.length>1 && (
-                  <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
-                )}
-              </div>
-            ))}
+            <div className="tab-bar-scroll">
+              {games.map(g=>(
+                <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={()=>setActiveId(g.id)}>
+                  {tabLabel(g)}
+                  {games.length>1 && (
+                    <span className="tab-close" onClick={e=>{e.stopPropagation();removeGame(g.id);}}>×</span>
+                  )}
+                </div>
+              ))}
+            </div>
             <div className="tab-add" onClick={addGame} title="Add game">＋</div>
           </div>
         </div>
@@ -1654,6 +2024,8 @@ function makeTOGame(id) {
     results: {},       // slotId -> { scoreA, scoreB, digit, winner, locked, paid }
     botRunning: false,
     botLastSlotId: null,
+    totalPot: 0,       // total pot across all slots
+    payments: {},      // playerName -> bool (paid buy-in)
   };
 }
 
@@ -1665,6 +2037,190 @@ function toTabLabel(g) {
 
 function calcDigit(scoreA, scoreB) {
   return (scoreA % 10 + scoreB % 10) % 10;
+}
+
+// ─── Timeout Payout Panel ─────────────────────────────────────────────────────
+function TOPayoutPanel({ game, onUpdate }) {
+  const totalPot = parseFloat(game.totalPot) || 0;
+  const perSlot = totalPot > 0 ? totalPot / TIMEOUT_SLOTS.length : 0;
+  const payments = game.payments || {};
+  const allPlayers = [...game.players].sort();
+
+  const togglePaid = (player) => {
+    onUpdate({ payments: { ...payments, [player]: !payments[player] } });
+  };
+
+  // Win counts per player
+  const winsByPlayer = {};
+  allPlayers.forEach(p => { winsByPlayer[p] = []; });
+  Object.entries(game.results).forEach(([slotId, r]) => {
+    if (r.locked && r.winner) {
+      if (!winsByPlayer[r.winner]) winsByPlayer[r.winner] = [];
+      winsByPlayer[r.winner].push(slotId);
+    }
+  });
+
+  const lockedSlots = Object.values(game.results).filter(r => r.locked);
+  const paidOutSoFar = lockedSlots.length * perSlot;
+  const paidInCount = allPlayers.filter(p => payments[p]).length;
+  const outstandingCount = allPlayers.length - paidInCount;
+
+  // Buy-in per player = total pot / number of players
+  const buyInPerPlayer = allPlayers.length > 0 && totalPot > 0
+    ? totalPot / allPlayers.length : 0;
+
+  return (
+    <div>
+      {/* Pot summary */}
+      <div className="card">
+        <div className="card-title">💰 Payout Schedule</div>
+        {totalPot === 0 ? (
+          <div style={{fontSize:13,color:"var(--warn)",background:"var(--warn-dim)",borderRadius:7,padding:"10px 12px",border:"1px solid rgba(245,158,11,0.2)"}}>
+            ⚠ Set the Total Pot in Setup → Step 1 to see payout amounts.
+          </div>
+        ) : (
+          <>
+            <div className="payment-summary" style={{marginBottom:14}}>
+              <div className="pay-stat">
+                <div className="ps-val">${totalPot}</div>
+                <div className="ps-label">Total Pot</div>
+              </div>
+              <div className="pay-stat">
+                <div className="ps-val">${perSlot % 1 === 0 ? perSlot : perSlot.toFixed(2)}</div>
+                <div className="ps-label">Per Slot</div>
+              </div>
+              <div className="pay-stat ps-green">
+                <div className="ps-val">${paidOutSoFar % 1 === 0 ? paidOutSoFar : paidOutSoFar.toFixed(2)}</div>
+                <div className="ps-label">Paid Out</div>
+              </div>
+              <div className="pay-stat ps-warn">
+                <div className="ps-val">${((totalPot - paidOutSoFar) % 1 === 0) ? totalPot - paidOutSoFar : (totalPot - paidOutSoFar).toFixed(2)}</div>
+                <div className="ps-label">Remaining</div>
+              </div>
+            </div>
+
+            {/* Slot-by-slot breakdown */}
+            {[1,2].map(half => (
+              <div key={half} style={{marginBottom:10}}>
+                <div style={{fontSize:10,letterSpacing:1.2,textTransform:"uppercase",color:"var(--text-dim)",fontWeight:600,marginBottom:6}}>
+                  {half === 1 ? "First Half" : "Second Half"}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {TIMEOUT_SLOTS.filter(s => s.half === half).map(slot => {
+                    const res = game.results[slot.id];
+                    const locked = res?.locked;
+                    return (
+                      <div key={slot.id} style={{
+                        display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+                        background: locked ? "rgba(34,197,94,0.07)" : "var(--surface2)",
+                        border: `1px solid ${locked ? "rgba(34,197,94,0.25)" : "var(--border)"}`,
+                        borderRadius:7,
+                      }}>
+                        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:"var(--court-bright)",minWidth:44,letterSpacing:.5}}>{slot.label}</div>
+                        <div style={{flex:1,fontSize:12}}>
+                          {locked
+                            ? <span style={{fontWeight:700,color:"var(--win)"}}>{res.winner || "—"}</span>
+                            : <span style={{color:"var(--text-dim)",fontStyle:"italic"}}>Pending</span>}
+                          {locked && <span style={{fontSize:11,color:"var(--text-dim)",marginLeft:6}}>{res.scoreA}–{res.scoreB}</span>}
+                        </div>
+                        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:locked?"var(--win)":"var(--text-dim)"}}>
+                          ${perSlot % 1 === 0 ? perSlot : perSlot.toFixed(2)}
+                        </div>
+                        {locked && (
+                          <div onClick={() => {
+                            const cur = game.results[slot.id] || {};
+                            onUpdate({ results: { ...game.results, [slot.id]: { ...cur, paid: !cur.paid } } });
+                          }}
+                            style={{cursor:"pointer",fontSize:10,fontWeight:600,
+                              color:res.paid?"var(--win)":"var(--text-dim)",
+                              border:"1px solid",borderColor:res.paid?"rgba(34,197,94,0.4)":"var(--border)",
+                              borderRadius:20,padding:"2px 8px",userSelect:"none",background:res.paid?"var(--win-dim)":"transparent",transition:"all .15s"}}>
+                            {res.paid ? "✓" : "Pay"}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Buy-in tracker */}
+      <div className="card">
+        <div className="card-title">💵 Buy-In Tracker</div>
+        {buyInPerPlayer > 0 && (
+          <div className="payment-summary" style={{marginBottom:14}}>
+            <div className="pay-stat">
+              <div className="ps-val">${buyInPerPlayer % 1 === 0 ? buyInPerPlayer : buyInPerPlayer.toFixed(2)}</div>
+              <div className="ps-label">Per Player</div>
+            </div>
+            <div className="pay-stat ps-green">
+              <div className="ps-val">{paidInCount}</div>
+              <div className="ps-label">Paid In</div>
+            </div>
+            <div className={`pay-stat ${outstandingCount > 0 ? "ps-warn" : "ps-green"}`}>
+              <div className="ps-val">{outstandingCount}</div>
+              <div className="ps-label">Outstanding</div>
+            </div>
+          </div>
+        )}
+
+        {allPlayers.length === 0 ? (
+          <div style={{fontSize:13,color:"var(--text-dim)"}}>No players yet — add them in Setup and randomize digits.</div>
+        ) : (
+          <table className="payment-table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th style={{textAlign:"center"}}>Digit</th>
+                <th style={{textAlign:"center"}}>Wins</th>
+                {totalPot > 0 && <th style={{textAlign:"right"}}>Earned</th>}
+                {buyInPerPlayer > 0 && <th style={{textAlign:"right"}}>Net</th>}
+                <th style={{textAlign:"right",paddingRight:14}}>Buy-In</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allPlayers.map(player => {
+                const digit = Object.entries(game.assignments).find(([,p])=>p===player)?.[0] ?? "—";
+                const wins = (winsByPlayer[player] || []).length;
+                const earned = wins * perSlot;
+                const net = earned - buyInPerPlayer;
+                const paid = !!payments[player];
+                return (
+                  <tr key={player}>
+                    <td style={{fontWeight:600,color:"var(--text)"}}>{player}</td>
+                    <td style={{textAlign:"center",color:"var(--court-bright)",fontFamily:"'Bebas Neue',sans-serif",fontSize:18}}>{digit}</td>
+                    <td style={{textAlign:"center",fontWeight:700,color:wins>0?"var(--win)":"var(--text-dim)"}}>{wins}</td>
+                    {totalPot > 0 && (
+                      <td style={{textAlign:"right",fontWeight:700,color:earned>0?"var(--win)":"var(--text-dim)"}}>
+                        {earned > 0 ? `$${earned % 1 === 0 ? earned : earned.toFixed(2)}` : "—"}
+                      </td>
+                    )}
+                    {buyInPerPlayer > 0 && (
+                      <td style={{textAlign:"right",fontWeight:700,
+                        color: net > 0 ? "var(--win)" : net < 0 ? "var(--danger)" : "var(--text-dim)"}}>
+                        {net > 0 ? `+$${net % 1 === 0 ? net : net.toFixed(2)}`
+                          : net < 0 ? `-$${Math.abs(net) % 1 === 0 ? Math.abs(net) : Math.abs(net).toFixed(2)}`
+                          : "$0"}
+                      </td>
+                    )}
+                    <td style={{textAlign:"right",paddingRight:14}}>
+                      <span className={`paid-toggle ${paid?"paid":"unpaid"}`} onClick={() => togglePaid(player)}>
+                        {paid ? "✓ Paid" : "Unpaid"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Timeout Setup Panel ──────────────────────────────────────────────────────
@@ -1744,6 +2300,24 @@ function TOSetupPanel({ game, onUpdate, onDelete }) {
             <option value="ncaab">NCAA Basketball</option>
             <option value="nba">NBA</option>
           </select>
+        </div>
+        <div className="field">
+          <label>Total Pot ($) — split evenly across 10 slots</label>
+          <div style={{display:"flex",alignItems:"center"}}>
+            <span style={{background:"var(--surface3)",border:"1px solid var(--border)",borderRight:"none",
+              borderRadius:"7px 0 0 7px",padding:"9px 11px",color:"var(--text-mid)",fontSize:14,fontWeight:600}}>$</span>
+            <input type="number" min="0" step="1"
+              value={game.totalPot || ""}
+              placeholder="0"
+              onChange={e => onUpdate({ totalPot: parseFloat(e.target.value) || 0 })}
+              style={{flex:1,background:"var(--surface2)",border:"1px solid var(--border)",
+                borderRadius:"0 7px 7px 0",padding:"9px 12px",color:"var(--text)",fontSize:14,outline:"none"}} />
+          </div>
+          {(game.totalPot > 0) && (
+            <div style={{fontSize:11,color:"var(--text-dim)",marginTop:5}}>
+              10 slots · <span style={{color:"var(--court-bright)",fontWeight:600}}>${(game.totalPot / 10) % 1 === 0 ? game.totalPot / 10 : (game.totalPot / 10).toFixed(2)}</span> per slot win
+            </div>
+          )}
         </div>
         <div className="field">
           <label>Date</label>
@@ -2414,6 +2988,7 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
           {id:"setup",   label:"Setup",   icon:"⚙"},
           {id:"board",   label:"Board",   icon:"🎯"},
           {id:"live",    label:"Live",    icon:"📡"},
+          {id:"payout",  label:"Payout",  icon:"💰"},
           {id:"players", label:"Players", icon:"👥"},
         ].map(t => (
           <div key={t.id} className={`inner-tab ${tab===t.id?"active":""}`} onClick={() => setTab(t.id)}>
@@ -2426,6 +3001,7 @@ function TOGameView({ game, onUpdate, onToast, onDelete }) {
         {tab==="setup"   && <TOSetupPanel game={game} onUpdate={onUpdate} onDelete={onDelete} />}
         {tab==="board"   && <TOBoardPanel game={game} onUpdate={onUpdate} onToast={onToast} />}
         {tab==="live"    && <TOLivePanel  game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
+        {tab==="payout"  && <TOPayoutPanel game={game} onUpdate={onUpdate} />}
         {tab==="players" && <PlayersPanel />}
       </div>
     </div>
@@ -2481,14 +3057,16 @@ function TimeoutApp({ onToast }) {
         )}
       </div>
       <div className="tab-bar">
-        {games.map(g => (
-          <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={() => setActiveId(g.id)}>
-            {toTabLabel(g)}
-            {games.length > 1 && (
-              <span className="tab-close" onClick={e => { e.stopPropagation(); removeGame(g.id); }}>×</span>
-            )}
-          </div>
-        ))}
+        <div className="tab-bar-scroll">
+          {games.map(g => (
+            <div key={g.id} className={`tab-item ${g.id===activeId?"active":""}`} onClick={() => setActiveId(g.id)}>
+              {toTabLabel(g)}
+              {games.length > 1 && (
+                <span className="tab-close" onClick={e => { e.stopPropagation(); removeGame(g.id); }}>×</span>
+              )}
+            </div>
+          ))}
+        </div>
         <div className="tab-add" onClick={addGame} title="Add game">＋</div>
       </div>
     </>
