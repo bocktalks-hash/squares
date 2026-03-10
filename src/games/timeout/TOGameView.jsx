@@ -5,6 +5,7 @@ import TOSetupPanel from "./TOSetupPanel";
 import { TOBoardPanel, TOPayoutPanel } from "./TOBoardAndPayoutPanels";
 import TOLivePanel from "./TOLivePanel";
 import PlayersPanel from "../../components/PlayersPanel";
+import TOSharePanel from "./TOSharePanel";
 
 export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
@@ -157,6 +158,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
     { id: "live",    label: "Live",    icon: "📡" },
     { id: "payout",  label: "Payout",  icon: "💰" },
     { id: "players", label: "Players", icon: "👥" },
+    { id: "share",   label: "Share",   icon: "🔗" },
   ];
 
   return (
@@ -175,6 +177,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
         {tab === "live"    && <TOLivePanel   game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
         {tab === "payout"  && <TOPayoutPanel game={game} onUpdate={onUpdate} />}
         {tab === "players" && <PlayersPanel />}
+        {tab === "share"   && <TOSharePanel  game={game} onUpdate={onUpdate} onToast={onToast} />}
       </div>
     </div>
   );

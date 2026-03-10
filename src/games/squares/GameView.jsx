@@ -4,6 +4,7 @@ import GridPanel from "./GridPanel";
 import ScoresPanel from "./ScoresPanel";
 import { HistoryPanel, PayoutPanel } from "./HistoryAndPayoutPanels";
 import PlayersPanel from "../../components/PlayersPanel";
+import SharePanel from "./SharePanel";
 
 export default function GameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
@@ -20,6 +21,8 @@ export default function GameView({ game, onUpdate, onToast, onDelete }) {
 
   const botProps = { scoreA, setScoreA, scoreB, setScoreB, botRunning, setBotRunning, botStatus, setBotStatus, botLive, setBotLive, timerRef };
 
+  const pendingChallenges = 0; // updated by SharePanel via badge
+
   const innerTabs = [
     { id: "setup",   label: "Setup",   icon: "⚙" },
     { id: "grid",    label: "Grid",    icon: "⬜" },
@@ -27,6 +30,7 @@ export default function GameView({ game, onUpdate, onToast, onDelete }) {
     { id: "players", label: "Players", icon: "👥" },
     { id: "payout",  label: "Payout",  icon: "💰" },
     { id: "history", label: "History", icon: "📋" },
+    { id: "share",   label: "Share",   icon: "🔗" },
   ];
 
   return (
@@ -46,6 +50,7 @@ export default function GameView({ game, onUpdate, onToast, onDelete }) {
         {tab === "players" && <PlayersPanel />}
         {tab === "payout"  && <PayoutPanel game={game} onUpdate={onUpdate} />}
         {tab === "history" && <HistoryPanel game={game} onUpdate={onUpdate} />}
+        {tab === "share"   && <SharePanel game={game} onUpdate={onUpdate} onToast={onToast} />}
       </div>
     </div>
   );
