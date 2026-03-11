@@ -205,6 +205,80 @@ const viewLink = {
   fontSize: 12, color: "var(--court-bright)", textDecoration: "none", fontWeight: 600,
 };
 
+
+// ── Cross-game Leaderboard ────────────────────────────────────────────────────
+function buildLeaderboard(games) {
+  const wins = {};
+
+  for (const game of games) {
+    const { type, data } = game;
+    const results = data.results || {};
+
+    if (type === "squares") {
+      Object.values(results).forEach(r => {
+        if (r?.winner) wins[r.winner] = (wins[r.winner] || 0) + 1;
+      });
+    } else if (type === "timeout") {
+      Object.values(results).forEach(r => {
+        if (r?.winner) wins[r.winner] = (wins[r.winner] || 0) + 1;
+      });
+    }
+  }
+
+  return Object.entries(wins)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function Leaderboard({ games }) {
+  const board = buildLeaderboard(games);
+  if (!board.length) return null;
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const maxWins = board[0]?.count || 1;
+
+  return (
+    <div style={{
+      background: "var(--surface1)", border: "1px solid var(--border)",
+      borderRadius: 14, padding: 16, marginBottom: 16,
+    }}>
+      <div style={{
+        fontSize: 12, fontWeight: 700, color: "var(--text-dim)",
+        textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 12,
+      }}>🏆 Game Day Leaderboard</div>
+
+      {board.map(({ name, count }, i) => (
+        <div key={name} style={{
+          display: "flex", alignItems: "center", gap: 10,
+          marginBottom: i < board.length - 1 ? 8 : 0,
+        }}>
+          <div style={{ width: 24, textAlign: "center", fontSize: 16 }}>
+            {medals[i] || `${i + 1}.`}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{name}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--court-bright)" }}>
+                {count} win{count !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div style={{
+              height: 5, background: "var(--surface2)", borderRadius: 3, overflow: "hidden",
+            }}>
+              <div style={{
+                height: "100%", borderRadius: 3,
+                width: `${(count / maxWins) * 100}%`,
+                background: i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : i === 2 ? "#b45309" : "var(--court-bright)",
+                transition: "width 0.5s ease",
+              }} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function SessionDashboard({ sessionId }) {
   const [session, setSession] = useState(null);
@@ -278,6 +352,8 @@ export default function SessionDashboard({ sessionId }) {
         </div>
 
         <div style={{ padding: "16px 16px 40px", maxWidth: 700, margin: "0 auto" }}>
+          <Leaderboard games={session.games} />
+
           {session.games.length === 0 && (
             <div style={{ textAlign: "center", color: "var(--text-dim)", padding: 60 }}>
               No games in this session yet
