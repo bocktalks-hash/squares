@@ -8,6 +8,7 @@ import SessionPanel from "./components/SessionPanel";
 import SquaresGame from "./games/squares/SquaresGame";
 import TimeoutGame from "./games/timeout/TimeoutGame";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
+import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/react";
 
 function getUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -52,26 +53,46 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
+      <style>{`
+        .clerk-sign-in {
+          background: var(--court-bright); color: #fff; border: none;
+          padding: 7px 16px; border-radius: 8px; font-size: 13px;
+          font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif;
+          white-space: nowrap;
+        }
+        .clerk-sign-in:hover { opacity: 0.85; }
+      `}</style>
       <div className="app-shell">
         <div className="topbar">
           <div className="topbar-logo">
             <img src="/logo.svg" alt="Bock Talks" />
             Bock Talks <span>{showSession ? "Session" : mode === "squares" ? "Squares" : "Timeout"}</span>
           </div>
-          <div className="mode-switcher">
-            <button
-              className={`mode-btn ${!showSession && mode === "squares" ? "active" : ""}`}
-              onClick={() => { setShowSession(false); setMode("squares"); }}
-            >⬛ Squares</button>
-            <button
-              className={`mode-btn ${!showSession && mode === "timeout" ? "active" : ""}`}
-              onClick={() => { setShowSession(false); setMode("timeout"); }}
-            >⏱ Timeout</button>
-            <button
-              className={`mode-btn ${showSession ? "active" : ""}`}
-              onClick={openSession}
-              style={{ background: showSession ? "#7c3aed" : undefined }}
-            >🔗 Session</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="mode-switcher">
+              <button
+                className={`mode-btn ${!showSession && mode === "squares" ? "active" : ""}`}
+                onClick={() => { setShowSession(false); setMode("squares"); }}
+              >⬛ Squares</button>
+              <button
+                className={`mode-btn ${!showSession && mode === "timeout" ? "active" : ""}`}
+                onClick={() => { setShowSession(false); setMode("timeout"); }}
+              >⏱ Timeout</button>
+              <button
+                className={`mode-btn ${showSession ? "active" : ""}`}
+                onClick={openSession}
+                style={{ background: showSession ? "#7c3aed" : undefined }}
+              >🔗 Session</button>
+            </div>
+
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="clerk-sign-in">Sign In</button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
         </div>
 
