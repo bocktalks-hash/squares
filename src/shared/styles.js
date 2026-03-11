@@ -41,7 +41,7 @@ html, body, #root {
   height:54px; flex-shrink:0;
   background: linear-gradient(180deg, #0d1520 0%, var(--surface) 100%);
   border-bottom:1px solid var(--border);
-  display:flex; align-items:center; padding:0 14px; gap:10px;
+  display:flex; align-items:center; padding:0 10px; gap:8px;
   position:relative;
 }
 .topbar::after {
@@ -52,24 +52,20 @@ html, body, #root {
   display:flex; align-items:center; gap:9px;
   font-family:'Barlow Condensed',sans-serif; font-size:20px;
   font-weight:700; letter-spacing:2.5px; color:var(--text-mid);
-  text-transform:uppercase;
+  text-transform:uppercase; flex-shrink:0; min-width:0;
 }
 .topbar-logo img { height:34px; width:34px; object-fit:contain; border-radius:50%; flex-shrink:0; }
 .topbar-logo span { color:#fff; font-weight:700; }
+.topbar-logo .logo-wordmark { white-space:nowrap; }
 
-/* ── Mode Switcher ── */
-.mode-switcher {
-  display:flex; gap:2px; background:var(--surface2);
-  border-radius:8px; padding:3px; margin-left:auto;
-}
+/* ── Mode Switcher (legacy, kept for compatibility) ── */
+.mode-switcher { display:flex; gap:2px; }
 .mode-btn {
   padding:5px 14px; border-radius:6px; font-size:11px; font-weight:700;
-  letter-spacing:.6px; text-transform:uppercase; cursor:pointer;
-  transition:all .15s; color:var(--text-dim); border:none;
-  background:transparent; font-family:'DM Sans',sans-serif;
+  cursor:pointer; transition:all .15s; color:var(--text-dim);
+  border:none; background:transparent; font-family:'DM Sans',sans-serif;
 }
 .mode-btn.active { background:var(--court); color:#fff; }
-.mode-btn:hover:not(.active) { color:var(--text); }
 
 /* ── Layout ── */
 .app-shell {
@@ -242,7 +238,7 @@ html, body, #root {
   padding:20px 16px 16px;
   background: linear-gradient(160deg, var(--surface2) 0%, #101520 100%);
   border-radius:10px; margin:10px 0; border:1px solid var(--border);
-  position:relative; overflow:hidden;
+  position:relative;
 }
 .score-display::before {
   content:''; position:absolute; top:0; left:50%; transform:translateX(-50%);
@@ -409,14 +405,55 @@ html, body, #root {
 .paid-toggle.unpaid:hover { color:var(--text-mid); border-color:var(--border-bright); }
 
 /* ── Responsive ── */
-@media(max-width:480px) {
-  .score-num { font-size:48px; }
-  .sq-cell { height:44px; font-size:8px; }
+@media(max-width:600px) {
   .inner-tab { padding:9px 12px; font-size:10px; }
-  .topbar-logo { font-size:17px; }
+  .sq-cell { height:44px; font-size:8px; }
+  .score-num { font-size:48px; }
+  .card { padding:12px; }
+  .btn { padding:9px 14px; font-size:13px; }
 }
-@media(max-width:360px) {
-  .sq-cell { height:40px; }
+
+@media(max-width:400px) {
+  .sq-cell { height:40px; font-size:7px; }
   .score-num { font-size:42px; }
+  .topbar-logo { font-size:16px; }
+}
+
+@media(max-width:360px) {
+  .sq-cell { height:36px; font-size:6.5px; }
+  .score-num { font-size:38px; }
+}
+
+/* Touch devices: always show close button on tabs */
+@media(hover:none) {
+  .tab-item .tab-close { opacity:0.6; }
+}
+
+/* ── Mobile Touch Improvements ── */
+@media(max-width:600px) {
+  /* Bigger tap targets */
+  .tab-item { min-height:48px; }
+  .inner-tab { min-height:42px; }
+  .btn { min-height:44px; }
+
+  /* Setup panels - stack vertically */
+  .score-row { flex-wrap:wrap; gap:8px; }
+  .digit-card { min-width:60px; }
+
+  /* Player list - full width on mobile */
+  .players-grid { grid-template-columns:1fr 1fr !important; }
+
+  /* Prevent text overflow in cells */
+  .sq-cell { overflow:hidden; }
+
+  /* Bot controls stack */
+  .bot-row { flex-wrap:wrap; }
+
+  /* History table - horizontal scroll */
+  .history-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  /* Payout stats wrap */
+  .payout-stats { flex-wrap:wrap; }
+  .pay-stat { min-width:calc(50% - 6px); }
 }
 `;
