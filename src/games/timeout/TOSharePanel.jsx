@@ -18,11 +18,13 @@ export default function TOSharePanel({ game, onUpdate, onToast }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "timeout", data: game }),
       });
-      const { code, hostToken } = await res.json();
+      const json = await res.json();
+      if (!json.code) throw new Error(json.detail || json.error || "Unknown error");
+      const { code, hostToken } = json;
       onUpdate({ shareCode: code, hostToken });
       onToast(`✅ Game published! Code: ${code}`);
     } catch {
-      onToast("❌ Could not create share link");
+      onToast(`❌ ${err.message}`);
     }
     setCreating(false);
   };
