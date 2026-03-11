@@ -8,7 +8,7 @@ import SessionPanel from "./components/SessionPanel";
 import SquaresGame from "./games/squares/SquaresGame";
 import TimeoutGame from "./games/timeout/TimeoutGame";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/react";
+import { useAuth, SignInButton, UserButton } from "@clerk/react";
 
 function getUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -33,6 +33,16 @@ function getStoredGames() {
   } catch {
     return { squaresGames: [], timeoutGames: [] };
   }
+}
+
+function AuthButtons() {
+  const { isSignedIn } = useAuth();
+  if (isSignedIn) return <UserButton afterSignOutUrl="/" />;
+  return (
+    <SignInButton mode="modal">
+      <button className="clerk-sign-in">Sign In</button>
+    </SignInButton>
+  );
 }
 
 export default function App() {
@@ -85,14 +95,7 @@ export default function App() {
               >🔗 Session</button>
             </div>
 
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button className="clerk-sign-in">Sign In</button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
+            <AuthButtons />
           </div>
         </div>
 
