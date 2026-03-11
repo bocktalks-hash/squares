@@ -25,7 +25,10 @@ function getStoredGames() {
   try {
     const sq = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     const to = JSON.parse(localStorage.getItem(TO_STORAGE_KEY) || "[]");
-    return { squaresGames: sq, timeoutGames: to };
+    return {
+      squaresGames: Array.isArray(sq) ? sq : [],
+      timeoutGames: Array.isArray(to) ? to : [],
+    };
   } catch {
     return { squaresGames: [], timeoutGames: [] };
   }

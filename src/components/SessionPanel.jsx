@@ -11,9 +11,11 @@ export default function SessionPanel({ squaresGames, timeoutGames, onToast }) {
 
   const sessionUrl = session ? `${window.location.origin}/?session=${session.id}` : null;
 
+  const sqGames = Array.isArray(squaresGames) ? squaresGames : [];
+  const toGames = Array.isArray(timeoutGames) ? timeoutGames : [];
   const allGames = [
-    ...squaresGames.map(g => ({ ...g, gameType: "squares" })),
-    ...timeoutGames.map(g => ({ ...g, gameType: "timeout" })),
+    ...sqGames.map(g => ({ ...g, gameType: "squares" })),
+    ...toGames.map(g => ({ ...g, gameType: "timeout" })),
   ];
 
   const publishedGames = allGames.filter(g => g.shareCode);
