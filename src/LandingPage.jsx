@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 
-export default function LandingPage({ onGuest }) {
+export default function LandingPage({ onGuest, onContinueAsGuest }) {
   const { signIn } = useSignIn();
   const canvasRef = useRef(null);
 
@@ -204,7 +204,7 @@ export default function LandingPage({ onGuest }) {
             Continue with Google
           </button>
 
-          <button onClick={onGuest} style={{
+          <button onClick={onGuest || onContinueAsGuest} style={{
             width: '100%', padding: '14px 24px',
             background: 'transparent', color: '#7aa3e8',
             border: '1px solid rgba(51,102,204,0.35)',
