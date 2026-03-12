@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "@clerk/clerk-react";
 import { BACKEND } from "../shared/constants";
 
 const APP_URL = window.location.origin;
