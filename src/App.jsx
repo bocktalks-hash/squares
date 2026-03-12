@@ -11,11 +11,9 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import LandingPage from './LandingPage';
 import PrivacyPolicy from './PrivacyPolicy';
 import TutorialTour, { TourReplayButton } from './TutorialTour';
-
-// Lazy-ish imports — add your actual game components here
-// import SquaresGame from './games/squares/SquaresGame';
-// import TimeoutGame from './games/timeout/TimeoutGame';
-// import GroupsPage from './components/GroupsPage';
+import SquaresGame from './games/squares/SquaresGame';
+import TimeoutGame from './games/timeout/TimeoutGame';
+import GroupsPage from './components/GroupsPage';
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const GUEST_KEY = 'bt_guest_mode';
@@ -117,28 +115,9 @@ function MainApp({ isGuest, onSignIn }) {
 
       {/* Tab content area */}
       <div style={{ padding: 16 }}>
-        {activeTab === 'squares' && (
-          <div style={{ color: '#7aa3e8', fontFamily: 'sans-serif', textAlign: 'center', paddingTop: 60 }}>
-            {/* Squares game component goes here */}
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎯</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Squares Game</div>
-            <div style={{ marginTop: 8, fontSize: 14 }}>Import your SquaresGame component here</div>
-          </div>
-        )}
-        {activeTab === 'timeout' && (
-          <div style={{ color: '#7aa3e8', fontFamily: 'sans-serif', textAlign: 'center', paddingTop: 60 }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⏱</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Timeout Game</div>
-            <div style={{ marginTop: 8, fontSize: 14 }}>Import your TimeoutGame component here</div>
-          </div>
-        )}
-        {activeTab === 'groups' && (
-          <div style={{ color: '#7aa3e8', fontFamily: 'sans-serif', textAlign: 'center', paddingTop: 60 }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>Groups</div>
-            <div style={{ marginTop: 8, fontSize: 14 }}>Import your GroupsPage component here</div>
-          </div>
-        )}
+        {activeTab === 'squares' && <SquaresGame />}
+        {activeTab === 'timeout' && <TimeoutGame />}
+        {activeTab === 'groups' && <GroupsPage isSignedIn={!isGuest} />}
       </div>
 
       {/* Bottom nav */}
