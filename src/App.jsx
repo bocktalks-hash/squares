@@ -14,7 +14,7 @@ import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 
 const GUEST_KEY = "bt_guest_mode";
 
