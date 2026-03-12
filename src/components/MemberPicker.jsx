@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "@clerk/clerk-react";
 import { BACKEND } from "../shared/constants";
 
 async function api(path, opts = {}) {
