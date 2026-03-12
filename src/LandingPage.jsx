@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useSignIn, useSignUp } from '@clerk/clerk-react';
+import { useSignIn } from '@clerk/clerk-react';
 
 export default function LandingPage({ onGuest, onContinueAsGuest }) {
   const { signIn } = useSignIn();
