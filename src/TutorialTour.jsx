@@ -233,3 +233,8 @@ export function TourReplayButton() {
     >?</button>
   );
 }
+
+// ── Helper exported for App.jsx ───────────────────────────────────────────────
+export function shouldShowTour() {
+  return !localStorage.getItem('bt_tour_done');
+}
