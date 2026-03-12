@@ -122,14 +122,27 @@ export default function LandingPage({ onGuest }) {
       <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 480, width: '100%' }}>
         {/* Logo */}
         <div style={{
-          width: 72, height: 72, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #3366CC, #1a44aa)',
-          border: '2px solid rgba(51,102,204,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 20px',
+          width: 96, height: 96,
+          borderRadius: '50%',
           boxShadow: '0 0 40px rgba(51,102,204,0.4)',
-          fontSize: 32, fontWeight: 900, color: '#fff', fontFamily: 'sans-serif',
-        }}>B</div>
+          overflow: 'hidden',
+        }}>
+          <img
+            src="/logo.png"
+            alt="Bock Talks"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            onError={e => {
+              // Fallback to B circle if logo not found
+              e.target.style.display = 'none';
+              e.target.parentElement.style.background = 'linear-gradient(135deg, #3366CC, #1a44aa)';
+              e.target.parentElement.style.display = 'flex';
+              e.target.parentElement.style.alignItems = 'center';
+              e.target.parentElement.style.justifyContent = 'center';
+              e.target.parentElement.innerHTML = '<span style="font-family:sans-serif;font-weight:900;font-size:36px;color:#fff">B</span>';
+            }}
+          />
+        </div>
 
         <h1 style={{
           fontFamily: "'Barlow Condensed', 'Impact', sans-serif",
