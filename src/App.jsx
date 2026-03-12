@@ -13,9 +13,10 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/react";
+import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
+
 
 const GUEST_KEY = "bt_guest_mode";
 
