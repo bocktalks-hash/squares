@@ -23,7 +23,7 @@ export default function TOSharePanel({ game, onUpdate, onToast }) {
       const { code, hostToken } = json;
       onUpdate({ shareCode: code, hostToken });
       onToast(`✅ Game published! Code: ${code}`);
-    } catch {
+    } catch (err) {
       onToast(`❌ ${err.message}`);
     }
     setCreating(false);
