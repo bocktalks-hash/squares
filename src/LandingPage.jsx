@@ -170,11 +170,13 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
         const result = await signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
         if (result.status === 'complete') {
           await setSignInActive({ session: result.createdSessionId });
+          window.location.href = '/';
         }
       } else {
         const result = await signUp.attemptEmailAddressVerification({ code: code.trim() });
         if (result.status === 'complete') {
           await setSignUpActive({ session: result.createdSessionId });
+          window.location.href = '/';
         }
       }
     } catch (err) {
