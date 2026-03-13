@@ -266,6 +266,8 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
     }
     setLoading(false);
   };
+
+  const features = [
     { icon: '🎯', label: 'Squares Game' },
     { icon: '⏱', label: 'Timeout Game' },
     { icon: '📺', label: 'Live Scores' },
