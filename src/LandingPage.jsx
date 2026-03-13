@@ -191,15 +191,29 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
     setLoading(false);
   };
 
-  // ── FORGOT PASSWORD — send reset code ─────────────────────────────────────
+  // ── FORGOT PASSWORD — send reset code (falls back to OTP for password-less accounts) ──
   const handleForgotPassword = async () => {
     if (!email.trim()) { setError('Please enter your email address.'); return; }
     setError(''); setLoading(true);
     try {
-      await signIn.create({ identifier: email.trim() });
-      await signIn.prepareFirstFactor({ strategy: 'reset_password_email_code' });
-      setSuccess('Reset code sent! Check your email.');
-      setStep('reset');
+      const si = await signIn.create({ identifier: email.trim() });
+      const hasPasswordReset = si.supportedFirstFactors?.some(f => f.strategy === 'reset_password_email_code');
+      const hasEmailCode = si.supportedFirstFactors?.some(f => f.strategy === 'email_code');
+
+      if (hasPasswordReset) {
+        // Normal password reset flow
+        await signIn.prepareFirstFactor({ strategy: 'reset_password_email_code' });
+        setSuccess('Reset code sent! Check your email.');
+        setStep('reset');
+      } else if (hasEmailCode) {
+        // Account has no password yet — sign in with OTP code instead
+        const emailFactor = si.supportedFirstFactors.find(f => f.strategy === 'email_code');
+        await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId: emailFactor.emailAddressId });
+        setSuccess("This account doesn't have a password yet — we sent a sign-in code instead.");
+        setStep('otp');
+      } else {
+        setError('Could not send a reset email. Try signing in with Google.');
+      }
     } catch (err) {
       const errCode = err.errors?.[0]?.code || '';
       if (errCode.includes('form_identifier_not_found')) {
@@ -235,7 +249,23 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
     setLoading(false);
   };
 
-  const features = [
+  // ── OTP sign-in (fallback for password-less accounts) ────────────────────
+  const handleVerifyOTP = async () => {
+    if (!code.trim()) { setError('Please enter the code.'); return; }
+    setError(''); setLoading(true);
+    try {
+      const result = await signIn.attemptFirstFactor({ strategy: 'email_code', code: code.trim() });
+      if (result.status === 'complete') {
+        await setSignInActive({ session: result.createdSessionId });
+        window.location.href = '/';
+      } else {
+        setError('Verification incomplete. Please try again.');
+      }
+    } catch (err) {
+      setError(err.errors?.[0]?.message || 'Invalid code. Please try again.');
+    }
+    setLoading(false);
+  };
     { icon: '🎯', label: 'Squares Game' },
     { icon: '⏱', label: 'Timeout Game' },
     { icon: '📺', label: 'Live Scores' },
@@ -348,6 +378,27 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
               <button onClick={() => reset('forgot')} style={btnLink}>Forgot password?</button>
               <button onClick={() => reset('signup')} style={btnLink}>Create account</button>
             </div>
+            <div style={{ textAlign: 'center' }}>
+              <button onClick={async () => {
+                if (!email.trim()) { setError('Enter your email above first.'); return; }
+                setError(''); setLoading(true);
+                try {
+                  const si = await signIn.create({ identifier: email.trim() });
+                  const emailFactor = si.supportedFirstFactors?.find(f => f.strategy === 'email_code');
+                  if (emailFactor) {
+                    await signIn.prepareFirstFactor({ strategy: 'email_code', emailAddressId: emailFactor.emailAddressId });
+                    setStep('otp');
+                  } else {
+                    setError('Email code sign-in is not available for this account.');
+                  }
+                } catch (err) {
+                  setError(err.errors?.[0]?.message || 'Could not send code.');
+                }
+                setLoading(false);
+              }} style={btnLink}>
+                Send me a sign-in code instead
+              </button>
+            </div>
             <button onClick={() => reset('buttons')} style={btnGuest}>← Back</button>
           </div>
         )}
@@ -447,6 +498,26 @@ export default function LandingPage({ onGuest, onContinueAsGuest }) {
               {loading ? 'Resetting…' : 'Reset Password & Sign In'}
             </button>
             <button onClick={() => reset('forgot')} style={btnGuest}>← Resend Code</button>
+          </div>
+        )}
+
+        {/* ── STEP: OTP sign-in (password-less accounts) ── */}
+        {step === 'otp' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ color: '#a0b8e8', fontFamily: 'sans-serif', fontSize: 15, margin: '0 0 4px' }}>
+              {success
+                ? success
+                : <>We sent a 6-digit code to <strong style={{ color: '#fff' }}>{email}</strong>. Enter it below.</>}
+            </p>
+            <input type="text" inputMode="numeric" placeholder="123456" maxLength={6}
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={e => e.key === 'Enter' && handleVerifyOTP()}
+              style={{ ...inputStyle, textAlign: 'center', fontSize: 28, letterSpacing: 8 }} autoFocus />
+            {error && <p style={errorStyle}>{error}</p>}
+            <button onClick={handleVerifyOTP} disabled={loading} style={{ ...btnPrimary, opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+            <button onClick={() => reset('forgot')} style={btnGuest}>← Back</button>
           </div>
         )}
 
