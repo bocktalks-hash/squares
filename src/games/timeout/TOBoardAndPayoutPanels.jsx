@@ -1,4 +1,5 @@
 import { TIMEOUT_SLOTS } from "../../shared/constants";
+import { calcDigit } from "../../shared/utils";
 
 // ─── Board Panel ──────────────────────────────────────────────────────────────
 export function TOBoardPanel({ game, onUpdate, onToast }) {
@@ -49,7 +50,6 @@ export function TOBoardPanel({ game, onUpdate, onToast }) {
                     <div style={{ fontSize: 11, color: "var(--text-dim)", minWidth: 52 }}>…{res.scoreA % 10}+…{res.scoreB % 10}={res.digit}</div>
                     <div style={{ flex: 1, fontWeight: 600, color: "var(--court-bright)", fontSize: 12 }}>{res.winner || `Digit ${res.digit}`}</div>
                     <button onClick={() => {
-                      const { calcDigit } = require("../../shared/utils");
                       const digit = calcDigit(res.scoreA, res.scoreB);
                       const winner = game.assignments[digit] || null;
                       const updated = { ...game.results, [slot.id]: { ...res, digit, winner, locked: true, paid: false, pending: false } };
