@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useUser, SignInButton } from "@clerk/clerk-react";
+import { useUser, SignInButton } from "@clerk/react";
 import { BACKEND } from "../shared/constants";
 
 async function api(path, opts = {}) {
@@ -25,35 +25,38 @@ export default function JoinGroup({ inviteCode }) {
   const join = async (asGuest = false) => {
     const displayName = asGuest
       ? guestName.trim()
-      : user?.fullName || user?.username || "Member";
+      : user?.fullName || user?.username || user?.emailAddresses?.[0]?.emailAddress || "Member";
 
     if (!displayName) return;
 
     setStatus("joining");
-    const data = await api("/groups/join", {
-      method: "POST",
-      body: JSON.stringify({
-        code: inviteCode,
-        userId: asGuest ? null : user?.id,
-        displayName,
-      }),
-    });
+    try {
+      const data = await api(`/groups/join/${encodeURIComponent(inviteCode)}`, {
+        method: "POST",
+        body: JSON.stringify({
+          userId: asGuest ? null : user?.id,
+          displayName,
+        }),
+      });
 
-    if (data.error) {
-      if (data.error.toLowerCase().includes("expired")) {
-        setStatus("expired");
-      } else {
-        setStatus("error");
-        setMessage(data.error);
+      if (data.error) {
+        if (data.error.toLowerCase().includes("expired")) {
+          setStatus("expired");
+        } else {
+          setStatus("error");
+          setMessage(data.error);
+        }
+        return;
       }
-      return;
-    }
 
-    setStatus("done");
-    // Redirect to the app after short delay
-    setTimeout(() => {
-      window.location.href = "/";
-    }, 2000);
+      setStatus("done");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 2000);
+    } catch (err) {
+      setStatus("error");
+      setMessage("Network error — please check your connection and try again.");
+    }
   };
 
   if (!isLoaded) return <Screen><Spinner /></Screen>;
