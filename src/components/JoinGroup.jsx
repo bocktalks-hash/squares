@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useUser, SignInButton } from "@clerk/react";
+import { useUser, SignInButton } from "@clerk/clerk-react";
 import { BACKEND } from "../shared/constants";
 
 async function api(path, opts = {}) {
