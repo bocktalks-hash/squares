@@ -13,6 +13,7 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
+import { loadRoster, saveRoster, pushToCloud, pullFromCloud } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -152,7 +153,6 @@ function DesktopNav({ mode, setMode, openSession }) {
 
 // ── Main app ──────────────────────────────────────────────────────────────────
 function MainApp({ showTourOnMount }) {
-  // ── All hooks first ──────────────────────────────────────────────────────
   const [mode, setMode] = useState("squares");
   const [toast, setToast] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -160,6 +160,13 @@ function MainApp({ showTourOnMount }) {
   const [showTour, setShowTour] = useState(false);
   const { isSignedIn } = useAuth();
   const { user: syncUser } = useUser();
+
+  useEffect(() => {
+    if (showTourOnMount && shouldShowTour()) {
+      const t = setTimeout(() => setShowTour(true), 400);
+      return () => clearTimeout(t);
+    }
+  }, [showTourOnMount]);
 
   // Pull from cloud when user signs in
   useEffect(() => {
@@ -169,12 +176,23 @@ function MainApp({ showTourOnMount }) {
     });
   }, [syncUser?.id]);
 
+  // Push to cloud every 60s and on storage change
   useEffect(() => {
-    if (showTourOnMount && shouldShowTour()) {
-      const t = setTimeout(() => setShowTour(true), 400);
-      return () => clearTimeout(t);
-    }
-  }, [showTourOnMount]);
+    if (!syncUser?.id) return;
+    let pushTimer = null;
+    const onStorage = () => {
+      setStoredGames(getStoredGames());
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(() => pushToCloud(syncUser.id), 2000);
+    };
+    window.addEventListener("storage", onStorage);
+    const interval = setInterval(() => pushToCloud(syncUser.id), 60000);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(interval);
+      clearTimeout(pushTimer);
+    };
+  }, [syncUser?.id]);
 
   const openSession = () => {
     setStoredGames(getStoredGames());
@@ -186,25 +204,6 @@ function MainApp({ showTourOnMount }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  // Push to cloud whenever localStorage changes (games saved by child components)
-  useEffect(() => {
-    if (!syncUser?.id) return;
-    let pushTimer = null;
-    const onStorage = () => {
-      setStoredGames(getStoredGames());
-      clearTimeout(pushTimer);
-      pushTimer = setTimeout(() => pushToCloud(syncUser.id), 2000);
-    };
-    window.addEventListener("storage", onStorage);
-    // Also push periodically as a safety net (every 60s)
-    const interval = setInterval(() => pushToCloud(syncUser.id), 60000);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      clearInterval(interval);
-      clearTimeout(pushTimer);
-    };
-  }, [syncUser?.id]);
 
   return (
     <>
@@ -270,7 +269,22 @@ function MainApp({ showTourOnMount }) {
         </div>
         {mode === "groups" && (
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <GroupsPage onToast={msg => setToast(msg)} isSignedIn={!!isSignedIn} />
+            <GroupsPage
+              onToast={msg => setToast(msg)}
+              isSignedIn={!!isSignedIn}
+              onStartGame={(members, gameType, groupId) => {
+                const names = members.map(m => m.display_name);
+                const existing = loadRoster();
+                const merged = [...new Set([...existing, ...names])];
+                saveRoster(merged);
+                sessionStorage.setItem("bt_pending_group_id", String(groupId));
+                setToast(`${names.length} members added — switching to ${gameType}`);
+                setMode(gameType);
+              }}
+              onJoinGame={(code) => {
+                window.location.href = `/?join=${code}`;
+              }}
+            />
           </div>
         )}
         {mode === "session" && (
