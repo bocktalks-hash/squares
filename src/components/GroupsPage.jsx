@@ -100,7 +100,7 @@ function InviteSection({ groupId, userId, onToast }) {
   );
 }
 
-function GroupDetail({ group, userId, onBack, onToast, onJoinGame }) {
+function GroupDetail({ group, userId, onBack, onToast, onStartGame, onJoinGame }) {
   const [members, setMembers] = useState(group.members || []);
   const [games, setGames] = useState([]);
   const isHost = group.host_user_id === userId;
@@ -256,9 +256,19 @@ export default function GroupsPage({ onToast, onSelectGroup, onStartGame, onJoin
   };
 
   const openGroup = async (groupId) => {
-    const data = await api(`/groups/${groupId}?userId=${encodeURIComponent(userId)}`);
-    if (data.id) setActiveGroup(data);
-    else onToast("Failed to load group");
+    try {
+      const data = await api(`/groups/${groupId}?userId=${encodeURIComponent(userId)}`);
+      console.log("openGroup response:", data);
+      if (data.id) {
+        setActiveGroup(data);
+      } else {
+        console.error("openGroup error:", data);
+        onToast(data.error || "Failed to load group");
+      }
+    } catch (err) {
+      console.error("openGroup exception:", err);
+      onToast("Network error loading group");
+    }
   };
 
   if (!userId) {
