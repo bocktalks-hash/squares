@@ -21,6 +21,22 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const gameRef      = useRef(game);
   useEffect(() => { gameRef.current = game; }, [game]);
 
+  // ── Always-on sync: push game state to DB whenever game changes (if shared) ──
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const sync = async () => {
+      try {
+        await fetch(`${BACKEND}/games/${game.shareCode}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hostToken: game.hostToken, data: game }),
+        });
+      } catch {}
+    };
+    const t = setTimeout(sync, 800); // debounce
+    return () => clearTimeout(t);
+  }, [game]);
+
   const mapTvTimeoutsToSlots = (tvPlays) => {
     const h1 = tvPlays.filter(p => p.period === 1);
     const h2 = tvPlays.filter(p => p.period === 2);
