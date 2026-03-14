@@ -13,15 +13,21 @@ export default function TOSharePanel({ game, onUpdate, onToast }) {
   const createShare = async () => {
     setCreating(true);
     try {
+      const pendingGroupId = sessionStorage.getItem("bt_pending_group_id");
       const res = await fetch(`${BACKEND}/games`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "timeout", data: game }),
+        body: JSON.stringify({
+          type: "timeout",
+          data: game,
+          groupId: pendingGroupId ? parseInt(pendingGroupId) : null,
+        }),
       });
       const json = await res.json();
       if (!json.code) throw new Error(json.detail || json.error || "Unknown error");
       const { code, hostToken } = json;
       onUpdate({ shareCode: code, hostToken });
+      sessionStorage.removeItem("bt_pending_group_id");
       onToast(`✅ Game published! Code: ${code}`);
     } catch (err) {
       onToast(`❌ ${err.message}`);
