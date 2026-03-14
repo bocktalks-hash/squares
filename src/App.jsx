@@ -13,7 +13,6 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { loadRoster, saveRoster } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -154,6 +153,15 @@ function DesktopNav({ mode, setMode, openSession }) {
 // ── Main app ──────────────────────────────────────────────────────────────────
 function MainApp({ showTourOnMount }) {
   const [mode, setMode] = useState("squares");
+  const { user: syncUser } = useUser();
+
+  // Pull from cloud when user signs in, push whenever data changes
+  useEffect(() => {
+    if (!syncUser?.id) return;
+    pullFromCloud(syncUser.id).then(pulled => {
+      if (pulled) setStoredGames(getStoredGames());
+    });
+  }, [syncUser?.id]);
   const [toast, setToast] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [storedGames, setStoredGames] = useState(getStoredGames);
@@ -177,6 +185,25 @@ function MainApp({ showTourOnMount }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Push to cloud whenever localStorage changes (games saved by child components)
+  useEffect(() => {
+    if (!syncUser?.id) return;
+    let pushTimer = null;
+    const onStorage = () => {
+      setStoredGames(getStoredGames());
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(() => pushToCloud(syncUser.id), 2000);
+    };
+    window.addEventListener("storage", onStorage);
+    // Also push periodically as a safety net (every 60s)
+    const interval = setInterval(() => pushToCloud(syncUser.id), 60000);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(interval);
+      clearTimeout(pushTimer);
+    };
+  }, [syncUser?.id]);
 
   return (
     <>
@@ -242,25 +269,7 @@ function MainApp({ showTourOnMount }) {
         </div>
         {mode === "groups" && (
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <GroupsPage
-              onToast={msg => setToast(msg)}
-              isSignedIn={!!isSignedIn}
-              onStartGame={(members, gameType, groupId) => {
-                // Merge group member names into the roster
-                const names = members.map(m => m.display_name);
-                const existing = loadRoster();
-                const merged = [...new Set([...existing, ...names])];
-                saveRoster(merged);
-                // Store pending groupId so game can link itself on publish
-                sessionStorage.setItem("bt_pending_group_id", String(groupId));
-                setToast(`${names.length} members added — switching to ${gameType}`);
-                setMode(gameType);
-              }}
-              onJoinGame={(code, type) => {
-                // Navigate to viewer for this game
-                window.location.href = `/?join=${code}`;
-              }}
-            />
+            <GroupsPage onToast={msg => setToast(msg)} isSignedIn={!!isSignedIn} />
           </div>
         )}
         {mode === "session" && (
