@@ -7,6 +7,10 @@ export default function SharePanel({ game, onUpdate, onToast }) {
   const [creating, setCreating] = useState(false);
   const [challenges, setChallenges] = useState([]);
   const [loadingChallenges, setLoadingChallenges] = useState(false);
+  const [pickLinks, setPickLinks] = useState([]);
+  const [sendingPicks, setSendingPicks] = useState(false);
+  const [deadline, setDeadline] = useState(game.pickDeadline || "");
+  const [challengeMsg, setChallengeMsg] = useState({});
 
   const hasShare = !!(game.shareCode && game.hostToken);
 
@@ -14,15 +18,21 @@ export default function SharePanel({ game, onUpdate, onToast }) {
   const createShare = async () => {
     setCreating(true);
     try {
+      const pendingGroupId = sessionStorage.getItem("bt_pending_group_id");
       const res = await fetch(`${BACKEND}/games`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "squares", data: game }),
+        body: JSON.stringify({
+          type: "squares",
+          data: game,
+          groupId: pendingGroupId ? parseInt(pendingGroupId) : null,
+        }),
       });
       const json = await res.json();
       if (!json.code) throw new Error(json.detail || json.error || "Unknown error");
       const { code, hostToken } = json;
       onUpdate({ shareCode: code, hostToken });
+      sessionStorage.removeItem("bt_pending_group_id");
       onToast(`✅ Game published! Code: ${code}`);
     } catch (err) {
       onToast(`❌ ${err.message}`);
@@ -80,11 +90,36 @@ export default function SharePanel({ game, onUpdate, onToast }) {
     }
   };
 
+  // Send pick invites
+  const sendPickInvites = async () => {
+    if (!game.players.length) { onToast("Add players first in Setup"); return; }
+    setSendingPicks(true);
+    try {
+      const res = await fetch(`${BACKEND}/games/${game.shareCode}/picks/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostToken: game.hostToken, players: game.players }),
+      });
+      const data = await res.json();
+      setPickLinks(data.links || []);
+      onToast(`✅ Pick links ready for ${data.links.length} players`);
+    } catch {
+      onToast("❌ Could not create pick links");
+    }
+    setSendingPicks(false);
+  };
+
+  const saveDeadline = (val) => {
+    setDeadline(val);
+    onUpdate({ pickDeadline: val });
+  };
+
   const copyLink = (text) => {
     navigator.clipboard.writeText(text).then(() => onToast("📋 Copied!")).catch(() => {});
   };
 
   const viewerUrl = hasShare ? `${BASE_URL}/?join=${game.shareCode}` : "";
+  const pickUrl = (token) => `${BASE_URL}/?pick=${game.shareCode}&t=${token}`;
 
   const pendingChallenges = challenges.filter(c => c.status === "pending");
 
@@ -127,6 +162,56 @@ export default function SharePanel({ game, onUpdate, onToast }) {
           </>
         )}
       </div>
+
+      {/* Pick Requests — only if published */}
+      {hasShare && (
+        <div className="card">
+          <div className="card-title">Pick Requests</div>
+          <p style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 12 }}>
+            Send each player a personal link so they can choose their own square. Set a deadline to lock picks automatically.
+          </p>
+
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label>Pick Deadline (optional)</label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={e => saveDeadline(e.target.value)}
+              style={{
+                width: "100%", background: "var(--surface2)", border: "1px solid var(--border)",
+                borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontSize: 14,
+                fontFamily: "'DM Sans',sans-serif", outline: "none", colorScheme: "dark",
+              }}
+            />
+          </div>
+
+          <button className="btn btn-primary" onClick={sendPickInvites} disabled={sendingPicks || !game.players.length}>
+            {sendingPicks ? "Generating…" : `📨 Generate Pick Links (${game.players.length} players)`}
+          </button>
+
+          {pickLinks.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", letterSpacing: .8, textTransform: "uppercase", marginBottom: 8 }}>
+                Player Links — Share individually
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pickLinks.map(({ name, token }) => (
+                  <div key={name} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    background: "var(--surface2)", borderRadius: 8, padding: "8px 12px",
+                    border: "1px solid var(--border)",
+                  }}>
+                    <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{name}</div>
+                    <button className="btn btn-secondary btn-sm" onClick={() => copyLink(pickUrl(token))}>
+                      📋 Copy Link
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Challenges */}
       {hasShare && (
