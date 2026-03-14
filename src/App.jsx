@@ -152,21 +152,22 @@ function DesktopNav({ mode, setMode, openSession }) {
 
 // ── Main app ──────────────────────────────────────────────────────────────────
 function MainApp({ showTourOnMount }) {
+  // ── All hooks first ──────────────────────────────────────────────────────
   const [mode, setMode] = useState("squares");
+  const [toast, setToast] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [storedGames, setStoredGames] = useState(getStoredGames);
+  const [showTour, setShowTour] = useState(false);
+  const { isSignedIn } = useAuth();
   const { user: syncUser } = useUser();
 
-  // Pull from cloud when user signs in, push whenever data changes
+  // Pull from cloud when user signs in
   useEffect(() => {
     if (!syncUser?.id) return;
     pullFromCloud(syncUser.id).then(pulled => {
       if (pulled) setStoredGames(getStoredGames());
     });
   }, [syncUser?.id]);
-  const [toast, setToast] = useState(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [storedGames, setStoredGames] = useState(getStoredGames);
-  const [showTour, setShowTour] = useState(false);
-  const { isSignedIn } = useAuth();
 
   useEffect(() => {
     if (showTourOnMount && shouldShowTour()) {
