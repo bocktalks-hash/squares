@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { BACKEND } from "../shared/constants";
+import { loadRoster, saveRoster } from "../shared/storage";
 
 const APP_URL = window.location.origin;
 
@@ -99,9 +100,22 @@ function InviteSection({ groupId, userId, onToast }) {
   );
 }
 
-function GroupDetail({ group, userId, onBack, onToast }) {
+function GroupDetail({ group, userId, onBack, onToast, onJoinGame }) {
   const [members, setMembers] = useState(group.members || []);
+  const [games, setGames] = useState([]);
   const isHost = group.host_user_id === userId;
+
+  useEffect(() => {
+    const loadGames = async () => {
+      try {
+        const data = await api(`/groups/${group.id}/games?userId=${encodeURIComponent(userId || "")}`);
+        if (Array.isArray(data.games)) setGames(data.games);
+      } catch {}
+    };
+    loadGames();
+    const interval = setInterval(loadGames, 30000);
+    return () => clearInterval(interval);
+  }, [group.id, userId]);
 
   const removeMember = async (memberId) => {
     if (!confirm("Remove this member from the group?")) return;
@@ -138,6 +152,56 @@ function GroupDetail({ group, userId, onBack, onToast }) {
         <InviteSection groupId={group.id} userId={userId} onToast={onToast} />
       )}
 
+      {/* Active Games — visible to all members */}
+      {games.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={styles.sectionLabel}>Active Games</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {games.map(g => (
+              <div key={g.code} style={styles.gameCard}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>
+                    {g.tab_name || `${g.team_a || "?"} vs ${g.team_b || "?"}`}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#7b8fa6", marginTop: 2 }}>
+                    {g.type === "timeout" ? "⏱ Timeout Game" : "⬛ Squares"} · Updated {new Date(g.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+                <button
+                  style={styles.viewBtn}
+                  onClick={() => onJoinGame && onJoinGame(g.code, g.type)}
+                >
+                  View →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isHost && onStartGame && (
+        <div style={styles.startGameBox}>
+          <div style={styles.sectionLabel}>Start a Game</div>
+          <div style={{ fontSize: 13, color: "#7b8fa6", marginBottom: 12 }}>
+            Group members will be automatically added to the player roster.
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              style={styles.gameBtn}
+              onClick={() => onStartGame(members, "squares", group.id)}
+            >
+              ⬛ Squares
+            </button>
+            <button
+              style={{ ...styles.gameBtn, background: "#1a3a5c", borderColor: "#2a5a8c" }}
+              onClick={() => onStartGame(members, "timeout", group.id)}
+            >
+              ⏱ Timeout
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={styles.sectionLabel}>Members</div>
       <div style={styles.memberList}>
         {members.map((m) => (
@@ -154,7 +218,7 @@ function GroupDetail({ group, userId, onBack, onToast }) {
 }
 
 // ── main component ─────────────────────────────────────────────────────────────
-export default function GroupsPage({ onToast, onSelectGroup }) {
+export default function GroupsPage({ onToast, onSelectGroup, onStartGame, onJoinGame }) {
   const { user } = useUser();
   const userId = user?.id;
   const displayName = user?.fullName || user?.username || "Me";
@@ -216,6 +280,8 @@ export default function GroupsPage({ onToast, onSelectGroup }) {
         userId={userId}
         onBack={() => { setActiveGroup(null); load(); }}
         onToast={onToast}
+        onStartGame={onStartGame}
+        onJoinGame={onJoinGame}
       />
     );
   }
@@ -370,6 +436,25 @@ const styles = {
     background: "#1a2535", border: "1px solid #2a3a50", borderRadius: 10,
     padding: "12px 14px", display: "flex", justifyContent: "space-between",
     alignItems: "center",
+  },
+  gameCard: {
+    background: "#1a2535", border: "1px solid #2a3a50", borderRadius: 10,
+    padding: "12px 14px", display: "flex", justifyContent: "space-between",
+    alignItems: "center", gap: 12,
+  },
+  viewBtn: {
+    background: "#3366cc", color: "#fff", border: "none", borderRadius: 8,
+    padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 13,
+    whiteSpace: "nowrap", flexShrink: 0,
+  },
+  startGameBox: {
+    background: "#1a2535", border: "1px solid #2a3a50", borderRadius: 12,
+    padding: 16, marginBottom: 20,
+  },
+  gameBtn: {
+    flex: 1, background: "#1a3366", border: "1px solid #3366cc",
+    borderRadius: 10, padding: "12px 0", color: "#fff",
+    fontWeight: 700, fontSize: 15, cursor: "pointer",
   },
   avatar: {
     width: 36, height: 36, borderRadius: "50%", background: "#2a3a50",
