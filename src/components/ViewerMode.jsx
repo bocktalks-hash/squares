@@ -167,7 +167,7 @@ function TimeoutViewer({ game, code, onToast }) {
 
   const SlotCard = ({ slot }) => {
     const result = game.results?.[slot.id];
-    const winner = result ? (game.assignments || {})[result.winnerDigit] : null;
+    const winner = result ? (result.winner || (game.assignments || {})[String(result.digit)]) : null;
     return (
       <div style={{
         background: result ? "rgba(51,102,204,0.08)" : "var(--surface2)",
@@ -179,9 +179,9 @@ function TimeoutViewer({ game, code, onToast }) {
           <div style={{ fontSize: 11, color: "var(--text-dim)", letterSpacing: .8, textTransform: "uppercase" }}>{slot.label}</div>
           {result ? (
             <>
-              <div style={{ fontWeight: 700, color: "var(--win)", fontSize: 14, marginTop: 2 }}>🏆 {winner || `#${result.winnerDigit}`}</div>
+              <div style={{ fontWeight: 700, color: "var(--win)", fontSize: 14, marginTop: 2 }}>🏆 {winner || `Digit ${result.digit}`}</div>
               <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
-                {game.teamA} {result.scoreA} + {game.teamB} {result.scoreB} = …{result.winnerDigit}
+                {game.teamA} {result.scoreA} + {game.teamB} {result.scoreB} = …{result.digit}
               </div>
             </>
           ) : (
