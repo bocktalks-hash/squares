@@ -256,7 +256,7 @@ export default function ViewerMode({ code }) {
 
   useEffect(() => {
     fetchGame();
-    const t = setInterval(fetchGame, 30000);
+    const t = setInterval(fetchGame, 10000); // poll every 10s for near-realtime updates
     return () => clearInterval(t);
   }, [code]);
 
