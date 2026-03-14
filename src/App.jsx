@@ -13,10 +13,9 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
+import { loadRoster, saveRoster } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
-
 
 const GUEST_KEY = "bt_guest_mode";
 
@@ -243,7 +242,25 @@ function MainApp({ showTourOnMount }) {
         </div>
         {mode === "groups" && (
           <div style={{ flex: 1, overflowY: "auto" }}>
-            <GroupsPage onToast={msg => setToast(msg)} isSignedIn={!!isSignedIn} />
+            <GroupsPage
+              onToast={msg => setToast(msg)}
+              isSignedIn={!!isSignedIn}
+              onStartGame={(members, gameType, groupId) => {
+                // Merge group member names into the roster
+                const names = members.map(m => m.display_name);
+                const existing = loadRoster();
+                const merged = [...new Set([...existing, ...names])];
+                saveRoster(merged);
+                // Store pending groupId so game can link itself on publish
+                sessionStorage.setItem("bt_pending_group_id", String(groupId));
+                setToast(`${names.length} members added — switching to ${gameType}`);
+                setMode(gameType);
+              }}
+              onJoinGame={(code, type) => {
+                // Navigate to viewer for this game
+                window.location.href = `/?join=${code}`;
+              }}
+            />
           </div>
         )}
         {mode === "session" && (
@@ -286,7 +303,6 @@ function LoadingScreen() {
 function AppRoutes() {
   const location = useLocation();
   if (location.pathname === "/privacy") return <PrivacyPolicy />;
-  if (location.pathname === "/sso-callback") return <AuthenticateWithRedirectCallback />;
   return <AppCore />;
 }
 
