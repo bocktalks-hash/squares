@@ -9,6 +9,13 @@ import TOSharePanel from "./TOSharePanel";
 
 export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
+  // Re-fetch scores immediately when switching to live tab
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    if (newTab === "live" && botRunning) {
+      setTimeout(fetchScores, 100);
+    }
+  };
 
   // Bot state lives here so it persists when switching tabs
   const [botRunning, setBotRunning] = useState(false);
@@ -33,9 +40,32 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
         });
       } catch {}
     };
-    const t = setTimeout(sync, 800); // debounce
+    const t = setTimeout(sync, 800);
     return () => clearTimeout(t);
   }, [game]);
+
+  // ── Challenge badge: poll for pending challenges in background ──────────────
+  const [pendingChallengeCount, setPendingChallengeCount] = useState(0);
+  const prevChallengeCount = useRef(0);
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const check = async () => {
+      try {
+        const res = await fetch(`${BACKEND}/games/${game.shareCode}/challenges?hostToken=${game.hostToken}`);
+        if (!res.ok) return;
+        const { challenges } = await res.json();
+        const pending = (challenges || []).filter(c => c.status === "pending").length;
+        setPendingChallengeCount(pending);
+        if (pending > prevChallengeCount.current) {
+          onToast(`⚑ New challenge received — check Share tab`);
+        }
+        prevChallengeCount.current = pending;
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 15000);
+    return () => clearInterval(t);
+  }, [game.shareCode, game.hostToken]);
 
   const mapTvTimeoutsToSlots = (tvPlays) => {
     const h1 = tvPlays.filter(p => p.period === 1);
@@ -83,18 +113,20 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
             p.homeScore >= 0 && p.awayScore >= 0
           );
 
-          const updatedResults = { ...g.results };
+          // Always read FRESH results from ref to avoid stale closure overwriting locked slots
+          const freshResults = { ...gameRef.current.results };
+          const updatedResults = { ...freshResults };
           let changed = false;
 
           if (tvPlays.length > 0) {
             const slotMap = mapTvTimeoutsToSlots(tvPlays);
             Object.entries(slotMap).forEach(([slotId, play]) => {
-              if (!updatedResults[slotId]?.locked) {
-                const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
-                const digit = calcDigit(tvA, tvB);
-                updatedResults[slotId] = { scoreA: tvA, scoreB: tvB, digit, winner: g.assignments[digit] || null, locked: false, paid: false, pending: true };
-                changed = true;
-              }
+              // NEVER touch a locked slot
+              if (updatedResults[slotId]?.locked) return;
+              const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
+              const digit = calcDigit(tvA, tvB);
+              updatedResults[slotId] = { scoreA: tvA, scoreB: tvB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
+              changed = true;
             });
 
             const latest = tvPlays[tvPlays.length - 1];
@@ -118,7 +150,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
           // Halftime slot
           const allPlays = pbpData.plays || [];
           const period1Plays = allPlays.filter(p => p.period === 1);
-          if (period1Plays.length > 0 && !updatedResults["h1_0"]?.locked) {
+          if (period1Plays.length > 0 && !gameRef.current.results["h1_0"]?.locked && !updatedResults["h1_0"]?.locked) {
             const lastP1 = period1Plays[period1Plays.length - 1];
             const period2Started = allPlays.some(p => p.period === 2);
             if (period2Started && lastP1.homeScore != null) {
@@ -130,9 +162,9 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
           }
 
           // Final slot
-          if (status === "final" && !updatedResults["h2_0"]?.locked) {
+          if (status === "final" && !gameRef.current.results["h2_0"]?.locked && !updatedResults["h2_0"]?.locked) {
             const digit = calcDigit(sA, sB);
-            updatedResults["h2_0"] = { scoreA: sA, scoreB: sB, digit, winner: g.assignments[digit] || null, locked: false, paid: false, pending: true };
+            updatedResults["h2_0"] = { scoreA: sA, scoreB: sB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
             changed = true;
             const finalKey = `final-${sA}-${sB}`;
             if (finalKey !== lastNotified.current) {
@@ -174,16 +206,24 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
     { id: "live",    label: "Live",    icon: "📡" },
     { id: "payout",  label: "Payout",  icon: "💰" },
     { id: "players", label: "Players", icon: "👥" },
-    { id: "share",   label: "Share",   icon: "🔗" },
+    { id: "share",   label: "Share",   icon: "🔗", badge: pendingChallengeCount },
   ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div className="inner-tabs">
         {innerTabs.map(t => (
-          <div key={t.id} className={`inner-tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
+          <div key={t.id} className={`inner-tab ${tab === t.id ? "active" : ""}`} onClick={() => handleTabChange(t.id)}>
             <span style={{ fontSize: 13 }}>{t.icon}</span> {t.label}
             {t.id === "live" && botRunning && <span style={{ marginLeft: 4, color: "var(--win)", fontSize: 9 }}>●</span>}
+            {t.badge > 0 && (
+              <span style={{
+                marginLeft: 5, background: "#e53935", color: "#fff",
+                borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                width: 16, height: 16, display: "inline-flex",
+                alignItems: "center", justifyContent: "center", lineHeight: 1,
+              }}>{t.badge}</span>
+            )}
           </div>
         ))}
       </div>
