@@ -1,0 +1,190 @@
+import { useState } from "react";
+import { randomPairs } from "../../shared/utils";
+import { ROSTER_KEY } from "../../shared/constants";
+
+// ── Toggle switch ──────────────────────────────────────────────────────────────
+function Toggle({ label, hint, checked, onChange }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+      padding: "13px 0", borderBottom: "1px solid var(--border)",
+    }}>
+      <div style={{ flex: 1, paddingRight: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>{label}</div>
+        {hint && <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.4 }}>{hint}</div>}
+      </div>
+      <div
+        onClick={() => onChange(!checked)}
+        style={{
+          width: 44, height: 24, borderRadius: 12, flexShrink: 0, cursor: "pointer",
+          background: checked ? "var(--court)" : "var(--surface3)",
+          border: `1px solid ${checked ? "var(--court)" : "var(--border)"}`,
+          position: "relative", transition: "all .2s",
+          boxShadow: checked ? "0 0 8px rgba(51,102,204,0.4)" : "none",
+        }}
+      >
+        <div style={{
+          position: "absolute", top: 2, left: checked ? 22 : 2,
+          width: 18, height: 18, borderRadius: "50%",
+          background: "#fff", transition: "left .2s",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Number pair editor ─────────────────────────────────────────────────────────
+function PairEditor({ label, pairs, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(pairs.map(p => p.join("/")));
+
+  const commit = () => {
+    const parsed = draft.map(d => {
+      const parts = d.split("/").map(Number);
+      return parts.length === 2 && !parts.some(isNaN) ? parts : null;
+    });
+    if (parsed.some(p => !p)) return;
+    // Validate all 10 digits covered, no repeats
+    const flat = parsed.flat();
+    if (new Set(flat).size !== 10 || flat.length !== 10) return;
+    onChange(parsed);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>{label}</div>
+      {!editing ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {pairs.map((p, i) => (
+            <div key={i} style={{
+              background: "var(--surface2)", border: "1px solid var(--border)",
+              borderRadius: 8, padding: "5px 12px",
+              fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, color: "var(--court-bright)",
+              letterSpacing: 1,
+            }}>{p[0]}/{p[1]}</div>
+          ))}
+          <button
+            onClick={() => { setDraft(pairs.map(p => p.join("/"))); setEditing(true); }}
+            style={{
+              background: "transparent", border: "1px solid var(--border)",
+              borderRadius: 8, padding: "5px 12px", color: "var(--text-dim)",
+              fontSize: 12, cursor: "pointer",
+            }}
+          >✎ Edit</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            {draft.map((d, i) => (
+              <input key={i} value={d}
+                onChange={e => { const nd = [...draft]; nd[i] = e.target.value; setDraft(nd); }}
+                style={{
+                  width: 52, background: "var(--surface2)", border: "1px solid var(--court-dim)",
+                  borderRadius: 8, padding: "5px 8px", color: "var(--text)",
+                  fontFamily: "'Bebas Neue',sans-serif", fontSize: 18, textAlign: "center", outline: "none",
+                }}
+                placeholder="0/5"
+              />
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 8 }}>
+            Format: X/Y — all 10 digits (0–9) must appear exactly once across 5 pairs
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={commit} style={{ background: "var(--court)", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditing(false)} style={{ background: "var(--surface2)", color: "var(--text-dim)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 14px", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main SquaresOptions component ──────────────────────────────────────────────
+export default function SquaresOptions({ game, onUpdate, onToast }) {
+  const opts = game.options || {};
+
+  const setOpt = (key, val) => onUpdate({ options: { ...opts, [key]: val } });
+
+  const handleLockNumbers = (locked) => {
+    setOpt("lockNumbers", locked);
+    if (locked) onToast("Numbers locked — will reuse these pairs for future games");
+    else onToast("Numbers unlocked — will randomize each game");
+  };
+
+  const saveLockedPairs = (colPairs, rowPairs) => {
+    try {
+      localStorage.setItem("bt_locked_col_pairs", JSON.stringify(colPairs));
+      localStorage.setItem("bt_locked_row_pairs", JSON.stringify(rowPairs));
+      onUpdate({ colPairs, rowPairs, options: { ...opts, lockNumbers: true } });
+      onToast("Number pairs saved and locked");
+    } catch {}
+  };
+
+  return (
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 4 }}>⚙ Game Options</div>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>These settings persist per game and can be changed at any time.</div>
+
+      <Toggle
+        label="Winner across the top"
+        hint={`Columns = ${game.teamA || "Team A"} (higher score wins). Default is Team A across the top.`}
+        checked={opts.winnerOnTop !== false}
+        onChange={val => setOpt("winnerOnTop", val)}
+      />
+
+      <Toggle
+        label="Loser down the side"
+        hint={`Rows = ${game.teamB || "Team B"} (lower score). Toggle off to flip which team is on each axis.`}
+        checked={opts.loserOnSide !== false}
+        onChange={val => setOpt("loserOnSide", val)}
+      />
+
+      <Toggle
+        label="Lock number pairs"
+        hint="Reuse the same column and row pairs for every game you run today. Useful when playing multiple games with the same group."
+        checked={!!opts.lockNumbers}
+        onChange={handleLockNumbers}
+      />
+
+      {opts.lockNumbers && game.colPairs?.length > 0 && (
+        <div style={{ marginTop: 12, padding: 12, background: "var(--surface2)", borderRadius: 10, border: "1px solid var(--border)" }}>
+          <PairEditor
+            label={`Columns (${game.teamA || "Team A"})`}
+            pairs={game.colPairs}
+            onChange={cols => saveLockedPairs(cols, game.rowPairs)}
+          />
+          <div style={{ marginTop: 12 }}>
+            <PairEditor
+              label={`Rows (${game.teamB || "Team B"})`}
+              pairs={game.rowPairs}
+              onChange={rows => saveLockedPairs(game.colPairs, rows)}
+            />
+          </div>
+          <button
+            onClick={() => {
+              const { colPairs, rowPairs } = randomPairs();
+              saveLockedPairs(colPairs, rowPairs);
+            }}
+            style={{
+              marginTop: 12, background: "transparent", border: "1px solid var(--court-dim)",
+              borderRadius: 8, padding: "7px 14px", color: "var(--court-bright)",
+              fontSize: 13, cursor: "pointer", width: "100%",
+            }}
+          >
+            🎲 Re-randomize & Lock
+          </button>
+        </div>
+      )}
+
+      <Toggle
+        label="Show team names on grid"
+        hint="Display team abbreviations on the grid header instead of just arrows."
+        checked={opts.showTeamNames !== false}
+        onChange={val => setOpt("showTeamNames", val)}
+      />
+    </div>
+  );
+}
