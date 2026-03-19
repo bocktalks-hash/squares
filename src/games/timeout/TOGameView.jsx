@@ -7,28 +7,64 @@ import TOLivePanel from "./TOLivePanel";
 import PlayersPanel from "../../components/PlayersPanel";
 import TOSharePanel from "./TOSharePanel";
 
-export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps: externalBotProps }) {
+export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
   const handleTabChange = (newTab) => {
     setTab(newTab);
-    if (newTab === "live" && (externalBotProps?.botRunning || internalBotRunning)) {
-      setTimeout(externalBotProps?.fetchScores || internalFetchScores, 100);
+    if (newTab === "live" && botRunning) {
+      setTimeout(fetchScores, 100);
     }
   };
 
-  // Internal bot state — only used if botProps not provided by parent
-  const [internalBotRunning, setInternalBotRunning] = useState(false);
-  const [internalBotStatus, setInternalBotStatus]   = useState("");
-  const [internalBotLive, setInternalBotLive]       = useState(false);
-  const [internalScoreA, setInternalScoreA]         = useState(0);
-  const [internalScoreB, setInternalScoreB]         = useState(0);
+  // Bot state lives here so it persists when switching tabs
+  const [botRunning, setBotRunning] = useState(false);
+  const [botStatus, setBotStatus]   = useState("");
+  const [botLive, setBotLive]       = useState(false);
+  const [scoreA, setScoreA]         = useState(0);
+  const [scoreB, setScoreB]         = useState(0);
   const timerRef     = useRef(null);
   const lastNotified = useRef(null);
   const gameRef      = useRef(game);
   useEffect(() => { gameRef.current = game; }, [game]);
 
-  // Stub fetchScores for internal use (only runs if no external botProps)
-  const internalFetchScores = () => {};
+  // ── Always-on sync: push game state to DB whenever game changes (if shared) ──
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const sync = async () => {
+      try {
+        await fetch(`${BACKEND}/games/${game.shareCode}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hostToken: game.hostToken, data: game }),
+        });
+      } catch {}
+    };
+    const t = setTimeout(sync, 800);
+    return () => clearTimeout(t);
+  }, [game]);
+
+  // ── Challenge badge: poll for pending challenges in background ──────────────
+  const [pendingChallengeCount, setPendingChallengeCount] = useState(0);
+  const prevChallengeCount = useRef(0);
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const check = async () => {
+      try {
+        const res = await fetch(`${BACKEND}/games/${game.shareCode}/challenges?hostToken=${game.hostToken}`);
+        if (!res.ok) return;
+        const { challenges } = await res.json();
+        const pending = (challenges || []).filter(c => c.status === "pending").length;
+        setPendingChallengeCount(pending);
+        if (pending > prevChallengeCount.current) {
+          onToast(`⚑ New challenge received — check Share tab`);
+        }
+        prevChallengeCount.current = pending;
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 15000);
+    return () => clearInterval(t);
+  }, [game.shareCode, game.hostToken]);
 
   const mapTvTimeoutsToSlots = (tvPlays) => {
     const h1 = tvPlays.filter(p => p.period === 1);
@@ -76,7 +112,6 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
             p.homeScore >= 0 && p.awayScore >= 0
           );
 
-          // Always read FRESH results from ref to avoid stale closure overwriting locked slots
           const freshResults = { ...gameRef.current.results };
           const updatedResults = { ...freshResults };
           let changed = false;
@@ -84,7 +119,6 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
           if (tvPlays.length > 0) {
             const slotMap = mapTvTimeoutsToSlots(tvPlays);
             Object.entries(slotMap).forEach(([slotId, play]) => {
-              // NEVER touch a locked slot
               if (updatedResults[slotId]?.locked) return;
               const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
               const digit = calcDigit(tvA, tvB);
@@ -119,7 +153,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
             if (period2Started && lastP1.homeScore != null) {
               const hA = lastP1.awayScore ?? sA, hB = lastP1.homeScore ?? sB;
               const digit = calcDigit(hA, hB);
-              updatedResults["h1_0"] = { scoreA: hA, scoreB: hB, digit, winner: g.assignments[digit] || null, locked: false, paid: false, pending: true };
+              updatedResults["h1_0"] = { scoreA: hA, scoreB: hB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
               changed = true;
             }
           }
@@ -161,16 +195,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  // Use external botProps from TimeoutGame if provided, else internal
-  const botProps = externalBotProps || {
-    botRunning: internalBotRunning, setBotRunning: setInternalBotRunning,
-    botStatus: internalBotStatus, setBotStatus: setInternalBotStatus,
-    botLive: internalBotLive,
-    scoreA: internalScoreA, setScoreA: setInternalScoreA,
-    scoreB: internalScoreB, setScoreB: setInternalScoreB,
-    fetchScores: internalFetchScores,
-  };
-  const { botRunning } = botProps;
+  const botProps = { botRunning, setBotRunning, botStatus, setBotStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores };
 
   const innerTabs = [
     { id: "setup",   label: "Setup",   icon: "⚙" },
@@ -178,7 +203,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
     { id: "live",    label: "Live",    icon: "📡" },
     { id: "payout",  label: "Payout",  icon: "💰" },
     { id: "players", label: "Players", icon: "👥" },
-    { id: "share",   label: "Share",   icon: "🔗" },
+    { id: "share",   label: "Share",   icon: "🔗", badge: pendingChallengeCount },
   ];
 
   return (
@@ -188,6 +213,14 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete, botProps
           <div key={t.id} className={`inner-tab ${tab === t.id ? "active" : ""}`} onClick={() => handleTabChange(t.id)}>
             <span style={{ fontSize: 13 }}>{t.icon}</span> {t.label}
             {t.id === "live" && botRunning && <span style={{ marginLeft: 4, color: "var(--win)", fontSize: 9 }}>●</span>}
+            {t.badge > 0 && (
+              <span style={{
+                marginLeft: 5, background: "#e53935", color: "#fff",
+                borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                width: 16, height: 16, display: "inline-flex",
+                alignItems: "center", justifyContent: "center", lineHeight: 1,
+              }}>{t.badge}</span>
+            )}
           </div>
         ))}
       </div>
