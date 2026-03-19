@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { BACKEND, SPORT_CONFIG } from "../../shared/constants";
 import { loadRoster, saveRoster } from "../../shared/storage";
 import { randomPairs, makeAbbr, autoTabName, getPayoutPeriods, getPerPeriodPayout, todayLocal } from "../../shared/utils";
+import SquaresOptions from "./SquaresOptions";
 
 export default function SetupPanel({ game, onUpdate, onDelete }) {
   const [espnGames, setEspnGames] = useState([]);
@@ -249,6 +250,11 @@ export default function SetupPanel({ game, onUpdate, onDelete }) {
             <button className="btn btn-secondary btn-sm" onClick={clearGrid}>Clear Grid</button>
           </div>
         </div>
+      )}
+
+      {/* Step 5 — Game Options */}
+      {gameSelected && (
+        <SquaresOptions game={game} onUpdate={onUpdate} onToast={() => {}} />
       )}
 
       {/* Danger Zone */}
