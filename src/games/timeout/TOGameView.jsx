@@ -74,37 +74,46 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
     return -1;
   };
 
-  // Map a TV timeout to the correct slot based on the game clock
-  // Basketball counts DOWN from 20:00. TV timeouts happen at the first dead ball
-  // UNDER each threshold: under 16, under 12, under 8, under 4
-  const getSlotForClock = (clock, period) => {
-    const secs = clockToSeconds(clock);
-    if (secs < 0) return null;
-    const prefix = period === 1 ? "h1" : "h2";
-    // secs remaining: under 16min = <= 960s, under 12 = <= 720s, etc.
-    if (secs <= 240) return `${prefix}_4`;   // under 4:00
-    if (secs <= 480) return `${prefix}_8`;   // under 8:00
-    if (secs <= 720) return `${prefix}_12`;  // under 12:00
-    if (secs <= 960) return `${prefix}_16`;  // under 16:00
-    return null; // above 16:00 - shouldn't be a TV timeout
-  };
+  // TV timeout windows — basketball counts DOWN from 20:00
+  // Each slot covers the range between two thresholds (in seconds remaining)
+  const TV_WINDOWS = [
+    ["_16", 960, 720],   // under 16: clock between 15:59 and 12:01
+    ["_12", 720, 480],   // under 12: clock between 11:59 and  8:01
+    ["_8",  480, 240],   // under  8: clock between  7:59 and  4:01
+    ["_4",  240,   0],   // under  4: clock between  3:59 and  0:00
+  ];
+  // How far above a threshold we'll still accept as a fallback (seconds)
+  const FALLBACK_BUFFER = 60;
 
   const mapTvTimeoutsToSlots = (tvPlays, lockedResults = {}) => {
     const mapped = {};
-    // Sort by period then by clock descending (highest clock = earliest in game)
-    const sorted = [...tvPlays].sort((a, b) => {
-      if (a.period !== b.period) return a.period - b.period;
-      return clockToSeconds(b.clock) - clockToSeconds(a.clock); // descending = earliest first
-    });
+    for (const period of [1, 2]) {
+      const prefix = period === 1 ? "h1" : "h2";
+      const periodPlays = tvPlays.filter(p => p.period === period);
 
-    // For each TV timeout, find the right slot by clock
-    // If a slot is already locked, skip it — don't remap
-    for (const play of sorted) {
-      const slot = getSlotForClock(play.clock, play.period);
-      if (!slot) continue;
-      if (lockedResults[slot]?.locked) continue; // already locked by host
-      if (mapped[slot]) continue; // already mapped this slot
-      mapped[slot] = play;
+      for (const [suffix, high, low] of TV_WINDOWS) {
+        const slotId = `${prefix}${suffix}`;
+        if (lockedResults[slotId]?.locked) continue;
+
+        const withSecs = periodPlays.map(p => ({ p, s: clockToSeconds(p.clock) }));
+
+        // PRIMARY: timeouts that happened AFTER the threshold (clock dropped below high)
+        // i.e. clock is strictly inside the window
+        const after = withSecs.filter(({ s }) => s > low && s < high);
+        if (after.length) {
+          // Pick the one with the HIGHEST clock (closest to the threshold going down)
+          mapped[slotId] = after.reduce((a, b) => a.s >= b.s ? a : b).p;
+          continue;
+        }
+
+        // FALLBACK: timeout logged just BEFORE the threshold (ESPN sometimes logs early)
+        // Accept if within FALLBACK_BUFFER seconds above the threshold
+        const before = withSecs.filter(({ s }) => s >= high && s <= high + FALLBACK_BUFFER);
+        if (before.length) {
+          // Pick the one CLOSEST to (just above) the threshold
+          mapped[slotId] = before.reduce((a, b) => a.s <= b.s ? a : b).p;
+        }
+      }
     }
     return mapped;
   };
@@ -150,12 +159,15 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
           let changed = false;
 
           if (tvPlays.length > 0) {
+            const isAutopilot = !!(gameRef.current.options?.autopilot);
             const slotMap = mapTvTimeoutsToSlots(tvPlays, gameRef.current.results);
             Object.entries(slotMap).forEach(([slotId, play]) => {
               if (updatedResults[slotId]?.locked) return;
               const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
               const digit = calcDigit(tvA, tvB);
-              updatedResults[slotId] = { scoreA: tvA, scoreB: tvB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
+              const winner = gameRef.current.assignments?.[digit] || null;
+              // Autopilot: lock immediately. Manual: mark as pending for host to review
+              updatedResults[slotId] = { scoreA: tvA, scoreB: tvB, digit, winner, locked: isAutopilot, paid: false, pending: !isAutopilot };
               changed = true;
             });
 
@@ -166,9 +178,12 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
               const tvA = latest.awayScore ?? sA, tvB = latest.homeScore ?? sB;
               const digit = calcDigit(tvA, tvB);
               const winner = g.assignments[digit] || null;
+              const isAuto = !!(gameRef.current.options?.autopilot);
               setScoreA(tvA); setScoreB(tvB);
-              setBotStatus(`📺 TV Timeout! Score: ${tvA}–${tvB} · Digit ${digit}`);
-              onToast(winner ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvA}–${tvB})` : `📺 TV Timeout! Digit ${digit} — no player assigned`);
+              setBotStatus(`📺 TV Timeout! Score: ${tvA}–${tvB} · Digit ${digit}${isAuto ? " · AUTO-LOCKED" : ""}`);
+              onToast(winner
+                ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvA}–${tvB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                : `📺 TV Timeout! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
               if (Notification.permission === "granted") {
                 new Notification("⏱ Official TV Timeout!", {
                   body: winner ? `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
@@ -177,30 +192,48 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
             }
           }
 
-          // Halftime slot
+          // Halftime slot — detect via ESPN status OR period 2 starting
           const allPlays = pbpData.plays || [];
           const period1Plays = allPlays.filter(p => p.period === 1);
-          if (period1Plays.length > 0 && !gameRef.current.results["h1_0"]?.locked && !updatedResults["h1_0"]?.locked) {
+          const isHalftime = status === "halftime" || allPlays.some(p => p.period === 2);
+          if (period1Plays.length > 0 && isHalftime &&
+              !gameRef.current.results["h1_0"]?.locked && !updatedResults["h1_0"]?.locked) {
             const lastP1 = period1Plays[period1Plays.length - 1];
-            const period2Started = allPlays.some(p => p.period === 2);
-            if (period2Started && lastP1.homeScore != null) {
+            if (lastP1.homeScore != null) {
               const hA = lastP1.awayScore ?? sA, hB = lastP1.homeScore ?? sB;
               const digit = calcDigit(hA, hB);
-              updatedResults["h1_0"] = { scoreA: hA, scoreB: hB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
+              const winner = gameRef.current.assignments?.[digit] || null;
+              const isAuto = !!(gameRef.current.options?.autopilot);
+              updatedResults["h1_0"] = { scoreA: hA, scoreB: hB, digit, winner, locked: isAuto, paid: false, pending: !isAuto };
               changed = true;
+              const halfKey = `half-${hA}-${hB}`;
+              if (halfKey !== lastNotified.current) {
+                lastNotified.current = halfKey;
+                onToast(winner
+                  ? `⏸ Halftime! ${winner} wins — digit ${digit} (${hA}–${hB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                  : `⏸ Halftime! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
+                if (Notification.permission === "granted") {
+                  new Notification("⏸ Halftime!", {
+                    body: winner ? `${g.teamA} ${hA} – ${hB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${hA} – ${hB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
+                  });
+                }
+              }
             }
           }
 
           // Final slot
           if (status === "final" && !gameRef.current.results["h2_0"]?.locked && !updatedResults["h2_0"]?.locked) {
             const digit = calcDigit(sA, sB);
-            updatedResults["h2_0"] = { scoreA: sA, scoreB: sB, digit, winner: gameRef.current.assignments?.[digit] || null, locked: false, paid: false, pending: true };
+            const winner = gameRef.current.assignments?.[digit] || null;
+            const isAuto = !!(gameRef.current.options?.autopilot);
+            updatedResults["h2_0"] = { scoreA: sA, scoreB: sB, digit, winner, locked: isAuto, paid: false, pending: !isAuto };
             changed = true;
             const finalKey = `final-${sA}-${sB}`;
             if (finalKey !== lastNotified.current) {
               lastNotified.current = finalKey;
-              const winner = g.assignments[digit] || null;
-              onToast(winner ? `🏁 Final! ${winner} wins — digit ${digit} (${sA}–${sB})` : `🏁 Final! Digit ${digit} — no player assigned`);
+              onToast(winner
+                ? `🏁 Final! ${winner} wins — digit ${digit} (${sA}–${sB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                : `🏁 Final! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
               if (Notification.permission === "granted") {
                 new Notification("🏁 Game Final!", {
                   body: winner ? `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
@@ -228,7 +261,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  const botProps = { botRunning, setBotRunning, botStatus, setBotStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores };
+  const botProps = { botRunning, setBotRunning, botStatus, setBotStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores, autopilot: !!(game.options?.autopilot), setAutopilot: (val) => onUpdate({ options: { ...(game.options || {}), autopilot: val } }) };
 
   const innerTabs = [
     { id: "setup",   label: "Setup",   icon: "⚙" },
