@@ -1,14 +1,29 @@
 import { STORAGE_KEY, ROSTER_KEY, TO_STORAGE_KEY, BACKEND } from "./constants";
 
-// ── Roster ──────────────────────────────────────────────────────────────────
+// ── Current userId (set by App on sign-in) ───────────────────────────────────
+let _currentUserId = null;
+export function setCloudUserId(id) { _currentUserId = id; }
+
+// ── Debounce helper ──────────────────────────────────────────────────────────
+let _pushTimer = null;
+function schedulePush() {
+  if (!_currentUserId) return;
+  clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(() => pushToCloud(_currentUserId), 1500);
+}
+
+// ── Roster ───────────────────────────────────────────────────────────────────
 export function loadRoster() {
   try { return JSON.parse(localStorage.getItem(ROSTER_KEY) || "[]"); } catch { return []; }
 }
 export function saveRoster(roster) {
-  try { localStorage.setItem(ROSTER_KEY, JSON.stringify(roster)); } catch {}
+  try {
+    localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+    schedulePush();
+  } catch {}
 }
 
-// ── Squares ─────────────────────────────────────────────────────────────────
+// ── Squares ──────────────────────────────────────────────────────────────────
 export function loadState() {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
@@ -17,7 +32,10 @@ export function loadState() {
   return null;
 }
 export function saveState(games, activeId) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ games, activeId })); } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ games, activeId }));
+    schedulePush(); // push to cloud every time games are saved
+  } catch {}
 }
 
 // ── Timeout ──────────────────────────────────────────────────────────────────
@@ -28,10 +46,13 @@ export function loadTOState() {
   } catch { return null; }
 }
 export function saveTOState(games, activeId) {
-  try { localStorage.setItem(TO_STORAGE_KEY, JSON.stringify({ games, activeId })); } catch {}
+  try {
+    localStorage.setItem(TO_STORAGE_KEY, JSON.stringify({ games, activeId }));
+    schedulePush(); // push to cloud every time games are saved
+  } catch {}
 }
 
-// ── Cloud sync ───────────────────────────────────────────────────────────────
+// ── Cloud push ───────────────────────────────────────────────────────────────
 export async function pushToCloud(userId) {
   if (!userId) return;
   try {
@@ -52,6 +73,7 @@ export async function pushToCloud(userId) {
   } catch {}
 }
 
+// ── Cloud pull ───────────────────────────────────────────────────────────────
 export async function pullFromCloud(userId) {
   if (!userId) return false;
   try {
@@ -59,13 +81,16 @@ export async function pullFromCloud(userId) {
     if (!res.ok) return false;
     const { squares, timeout, roster } = await res.json();
 
-    // Merge cloud into local — cloud wins for any game with same id
+    const hasCloudData = (Array.isArray(squares) && squares.length > 0) ||
+                         (Array.isArray(timeout) && timeout.length > 0);
+
+    // If cloud has data, merge it — cloud wins for matching IDs, local keeps extras
     const mergeGames = (local, cloud) => {
       if (!Array.isArray(cloud) || cloud.length === 0) return local;
       if (!Array.isArray(local) || local.length === 0) return cloud;
       const cloudMap = Object.fromEntries(cloud.map(g => [g.id, g]));
-      const localFiltered = local.filter(g => !cloudMap[g.id]);
-      return [...cloud, ...localFiltered];
+      const localOnly = local.filter(g => !cloudMap[g.id]);
+      return [...cloud, ...localOnly];
     };
 
     const sqRaw = localStorage.getItem(STORAGE_KEY);
@@ -73,16 +98,19 @@ export async function pullFromCloud(userId) {
     const localSq = sqRaw ? JSON.parse(sqRaw) : { games: [], activeId: null };
     const localTo = toRaw ? JSON.parse(toRaw) : { games: [], activeId: null };
 
-    const mergedSq = mergeGames(localSq.games || [], squares);
-    const mergedTo = mergeGames(localTo.games || [], timeout);
+    const mergedSq = mergeGames(localSq.games || [], squares || []);
+    const mergedTo = mergeGames(localTo.games || [], timeout || []);
 
+    // Always write merged result back to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ games: mergedSq, activeId: localSq.activeId }));
     localStorage.setItem(TO_STORAGE_KEY, JSON.stringify({ games: mergedTo, activeId: localTo.activeId }));
+
     if (Array.isArray(roster) && roster.length > 0) {
       const localRoster = loadRoster();
-      const merged = [...new Set([...localRoster, ...roster])];
+      const merged = [...new Set([...roster, ...localRoster])];
       localStorage.setItem(ROSTER_KEY, JSON.stringify(merged));
     }
-    return true;
+
+    return hasCloudData || true;
   } catch { return false; }
 }
