@@ -13,7 +13,7 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { loadRoster, saveRoster, pushToCloud, pullFromCloud, setCloudUserId, markInitialized } from "./shared/storage";
+import { loadRoster, saveRoster, pushToCloud, pullFromCloud, setCloudUserId } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
