@@ -1,26 +1,18 @@
 import { STORAGE_KEY, ROSTER_KEY, TO_STORAGE_KEY, BACKEND } from "./constants";
 
-// ── Current userId (set by App on sign-in) ────────────────────────────────────
+// ── Current userId (set by App on sign-in) ───────────────────────────────────
 let _currentUserId = null;
+export function setCloudUserId(id) { _currentUserId = id; }
+
+// ── Debounce helper ──────────────────────────────────────────────────────────
 let _pushTimer = null;
-let _initialized = false; // don't push during initial load
-
-export function setCloudUserId(id) {
-  _currentUserId = id;
-}
-
-export function markInitialized() {
-  // Called by App after pullFromCloud completes — enables auto-push
-  _initialized = true;
-}
-
 function schedulePush() {
-  if (!_currentUserId || !_initialized) return;
+  if (!_currentUserId) return;
   clearTimeout(_pushTimer);
-  _pushTimer = setTimeout(() => pushToCloud(_currentUserId), 2000);
+  _pushTimer = setTimeout(() => pushToCloud(_currentUserId), 1500);
 }
 
-// ── Roster ────────────────────────────────────────────────────────────────────
+// ── Roster ───────────────────────────────────────────────────────────────────
 export function loadRoster() {
   try { return JSON.parse(localStorage.getItem(ROSTER_KEY) || "[]"); } catch { return []; }
 }
@@ -31,7 +23,7 @@ export function saveRoster(roster) {
   } catch {}
 }
 
-// ── Squares ───────────────────────────────────────────────────────────────────
+// ── Squares ──────────────────────────────────────────────────────────────────
 export function loadState() {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
@@ -46,7 +38,7 @@ export function saveState(games, activeId) {
   } catch {}
 }
 
-// ── Timeout ───────────────────────────────────────────────────────────────────
+// ── Timeout ──────────────────────────────────────────────────────────────────
 export function loadTOState() {
   try {
     const s = localStorage.getItem(TO_STORAGE_KEY);
@@ -60,7 +52,7 @@ export function saveTOState(games, activeId) {
   } catch {}
 }
 
-// ── Cloud push ────────────────────────────────────────────────────────────────
+// ── Cloud push ───────────────────────────────────────────────────────────────
 export async function pushToCloud(userId) {
   if (!userId) return;
   try {
@@ -69,7 +61,8 @@ export async function pushToCloud(userId) {
     const sq = sqRaw ? JSON.parse(sqRaw) : { games: [] };
     const to = toRaw ? JSON.parse(toRaw) : { games: [] };
     const roster = loadRoster();
-    await fetch(${BACKEND}/userdata/${encodeURIComponent(userId)}, {
+    const url = BACKEND + "/userdata/" + encodeURIComponent(userId);
+    await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -81,21 +74,23 @@ export async function pushToCloud(userId) {
   } catch {}
 }
 
-// ── Cloud pull ────────────────────────────────────────────────────────────────
+// ── Cloud pull ───────────────────────────────────────────────────────────────
 export async function pullFromCloud(userId) {
   if (!userId) return false;
   try {
-    const res = await fetch(${BACKEND}/userdata/${encodeURIComponent(userId)});
+    const url = BACKEND + "/userdata/" + encodeURIComponent(userId);
+    const res = await fetch(url);
     if (!res.ok) return false;
     const { squares, timeout, roster } = await res.json();
+
+    const hasCloudData = (Array.isArray(squares) && squares.length > 0) ||
+                         (Array.isArray(timeout) && timeout.length > 0);
 
     const mergeGames = (local, cloud) => {
       if (!Array.isArray(cloud) || cloud.length === 0) return local;
       if (!Array.isArray(local) || local.length === 0) return cloud;
-      const cloudMap = Object.fromEntries(
-        cloud.filter(g => g.id != null).map(g => [g.id, g])
-      );
-      const localOnly = local.filter(g => g.id != null && !cloudMap[g.id]);
+      const cloudMap = Object.fromEntries(cloud.map(g => [g.id, g]));
+      const localOnly = local.filter(g => !cloudMap[g.id]);
       return [...cloud, ...localOnly];
     };
 
@@ -107,7 +102,6 @@ export async function pullFromCloud(userId) {
     const mergedSq = mergeGames(localSq.games || [], squares || []);
     const mergedTo = mergeGames(localTo.games || [], timeout || []);
 
-    // Write merged data back — _initialized is still false so no push fires
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ games: mergedSq, activeId: localSq.activeId }));
     localStorage.setItem(TO_STORAGE_KEY, JSON.stringify({ games: mergedTo, activeId: localTo.activeId }));
 
@@ -117,6 +111,6 @@ export async function pullFromCloud(userId) {
       localStorage.setItem(ROSTER_KEY, JSON.stringify(merged));
     }
 
-    return true;
+    return hasCloudData || true;
   } catch { return false; }
 }
