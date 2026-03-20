@@ -1,179 +1,302 @@
-import { useState } from "react";
-import { BACKEND, TIMEOUT_SLOTS, SPORT_CONFIG } from "../../shared/constants";
-import { calcDigit, makeAbbr } from "../../shared/utils";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { BACKEND, SPORT_CONFIG, TIMEOUT_SLOTS } from "../../shared/constants";
+import { calcDigit, mapStatus, getPollingInterval, toTabLabel } from "../../shared/utils";
+import TOSetupPanel from "./TOSetupPanel";
+import { TOBoardPanel, TOPayoutPanel } from "./TOBoardAndPayoutPanels";
+import TOLivePanel from "./TOLivePanel";
+import PlayersPanel from "../../components/PlayersPanel";
+import TOSharePanel from "./TOSharePanel";
 
-export default function TOLivePanel({ game, onUpdate, onToast, botProps }) {
-  const { botRunning, setBotRunning, botStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores } = botProps;
-  const [activeSlotId, setActiveSlotId] = useState(() => TIMEOUT_SLOTS.find(s => !game.results[s.id]?.locked)?.id || null);
-  const [challenging, setChallenging] = useState(false);
-  const [challengeResult, setChallengeResult] = useState(null);
-
-  const liveDigit = calcDigit(scoreA, scoreB);
-  const liveWinner = game.assignments[liveDigit] || null;
-
-  const lockSlot = (slotId, sA, sB) => {
-    const digit = calcDigit(sA, sB);
-    const winner = game.assignments[digit] || null;
-    const updated = { ...game.results, [slotId]: { scoreA: sA, scoreB: sB, digit, winner, locked: true, paid: false, pending: false } };
-    onUpdate({ results: updated });
-    const slot = TIMEOUT_SLOTS.find(s => s.id === slotId);
-    onToast(winner ? `🔒 ${slot?.label} locked — ${winner} wins!` : `🔒 ${slot?.label} locked — digit ${digit}, no player`);
-    const remaining = TIMEOUT_SLOTS.find(s => s.id !== slotId && !game.results[s.id]?.locked);
-    if (remaining) setActiveSlotId(remaining.id);
+export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
+  const [tab, setTab] = useState("setup");
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    if (newTab === "live" && botRunning) {
+      setTimeout(fetchScores, 100);
+    }
   };
 
-  const challenge = async () => {
-    if (!game.espnGameId) { setChallengeResult({ error: "No ESPN game linked — select a game in Setup first." }); return; }
-    setChallenging(true); setChallengeResult(null);
-    try {
-      const path = SPORT_CONFIG[game.sport]?.path || "basketball/mens-college-basketball";
-      const res = await fetch(`${BACKEND}/playbyplay?gameId=${game.espnGameId}&sport=${path}`);
-      const data = await res.json();
-      const plays = data.plays || [];
-      const tvPlays = plays.filter(p => (p.text || "").toLowerCase().includes("official tv timeout"));
-      if (tvPlays.length === 0) {
-        setChallengeResult({ notYet: true, error: "No Official TV Timeout found yet." });
-      } else {
-        const h1 = tvPlays.filter(p => p.period === 1);
-        const h2 = tvPlays.filter(p => p.period === 2);
-        const h1Slots = ["h1_16", "h1_12", "h1_8", "h1_4", "h1_0"];
-        const h2Slots = ["h2_16", "h2_12", "h2_8", "h2_4", "h2_0"];
-        const slotMap = {};
-        h1.forEach((p, i) => { if (i < h1Slots.length) slotMap[h1Slots[i]] = p; });
-        h2.forEach((p, i) => { if (i < h2Slots.length) slotMap[h2Slots[i]] = p; });
-        const matchedPlay = activeSlotId ? slotMap[activeSlotId] : null;
-        const slotLabel = activeSlotId ? TIMEOUT_SLOTS.find(s => s.id === activeSlotId)?.label : "?";
-        if (!matchedPlay) {
-          setChallengeResult({ notYet: true, error: `Timeout at ${slotLabel} hasn't happened yet.` });
-        } else {
-          const { awayScore, homeScore, clock, period, text } = matchedPlay;
-          const validScores = typeof awayScore === "number" && typeof homeScore === "number" && awayScore >= 0 && homeScore >= 0;
-          setChallengeResult({ awayScore, homeScore, clock, period, text });
-          if (validScores) { setScoreA(awayScore); setScoreB(homeScore); }
+  // Bot state lives here so it persists when switching tabs
+  const [botRunning, setBotRunning] = useState(false);
+  const [botStatus, setBotStatus]   = useState("");
+  const [botLive, setBotLive]       = useState(false);
+  const [scoreA, setScoreA]         = useState(0);
+  const [scoreB, setScoreB]         = useState(0);
+  const timerRef     = useRef(null);
+  const lastNotified = useRef(null);
+  const gameRef      = useRef(game);
+  useEffect(() => { gameRef.current = game; }, [game]);
+
+  // ── Always-on sync: push game state to DB whenever game changes (if shared) ──
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const sync = async () => {
+      try {
+        await fetch(`${BACKEND}/games/${game.shareCode}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hostToken: game.hostToken, data: game }),
+        });
+      } catch {}
+    };
+    const t = setTimeout(sync, 800);
+    return () => clearTimeout(t);
+  }, [game]);
+
+  // ── Challenge badge: poll for pending challenges in background ──────────────
+  const [pendingChallengeCount, setPendingChallengeCount] = useState(0);
+  const prevChallengeCount = useRef(0);
+  useEffect(() => {
+    if (!game.shareCode || !game.hostToken) return;
+    const check = async () => {
+      try {
+        const res = await fetch(`${BACKEND}/games/${game.shareCode}/challenges?hostToken=${game.hostToken}`);
+        if (!res.ok) return;
+        const { challenges } = await res.json();
+        const pending = (challenges || []).filter(c => c.status === "pending").length;
+        setPendingChallengeCount(pending);
+        if (pending > prevChallengeCount.current) {
+          onToast(`⚑ New challenge received — check Share tab`);
+        }
+        prevChallengeCount.current = pending;
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 15000);
+    return () => clearInterval(t);
+  }, [game.shareCode, game.hostToken]);
+
+  // Convert "MM:SS" clock string to total seconds remaining
+  const clockToSeconds = (clock) => {
+    if (!clock) return -1;
+    const parts = clock.split(":").map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return -1;
+  };
+
+  // TV timeout windows — basketball counts DOWN from 20:00
+  // Each slot covers the range between two thresholds (in seconds remaining)
+  const TV_WINDOWS = [
+    ["_16", 960, 720],   // under 16: clock between 15:59 and 12:01
+    ["_12", 720, 480],   // under 12: clock between 11:59 and  8:01
+    ["_8",  480, 240],   // under  8: clock between  7:59 and  4:01
+    ["_4",  240,   0],   // under  4: clock between  3:59 and  0:00
+  ];
+  // How far above a threshold we'll still accept as a fallback (seconds)
+  const FALLBACK_BUFFER = 60;
+
+  const mapTvTimeoutsToSlots = (tvPlays, lockedResults = {}) => {
+    const mapped = {};
+    for (const period of [1, 2]) {
+      const prefix = period === 1 ? "h1" : "h2";
+      const periodPlays = tvPlays.filter(p => p.period === period);
+
+      for (const [suffix, high, low] of TV_WINDOWS) {
+        const slotId = `${prefix}${suffix}`;
+        if (lockedResults[slotId]?.locked) continue;
+
+        const withSecs = periodPlays.map(p => ({ p, s: clockToSeconds(p.clock) }));
+
+        // PRIMARY: timeouts that happened AFTER the threshold (clock dropped below high)
+        // i.e. clock is strictly inside the window
+        const after = withSecs.filter(({ s }) => s > low && s < high);
+        if (after.length) {
+          // Pick the one with the HIGHEST clock (closest to the threshold going down)
+          mapped[slotId] = after.reduce((a, b) => a.s >= b.s ? a : b).p;
+          continue;
+        }
+
+        // FALLBACK: timeout logged just BEFORE the threshold (ESPN sometimes logs early)
+        // Accept if within FALLBACK_BUFFER seconds above the threshold
+        const before = withSecs.filter(({ s }) => s >= high && s <= high + FALLBACK_BUFFER);
+        if (before.length) {
+          // Pick the one CLOSEST to (just above) the threshold
+          mapped[slotId] = before.reduce((a, b) => a.s <= b.s ? a : b).p;
         }
       }
-    } catch { setChallengeResult({ error: "Could not fetch play-by-play. Try again." }); }
-    setChallenging(false);
+    }
+    return mapped;
   };
 
-  const startBot = () => { Notification.requestPermission(); setBotRunning(true); };
-  const stopBot  = () => { setBotRunning(false); };
-  const activeSlot = TIMEOUT_SLOTS.find(s => s.id === activeSlotId);
+  const fetchScores = useCallback(async () => {
+    const g = gameRef.current;
+    if (!g.teamA && !g.teamB) { setBotStatus("Set teams in Setup first"); return; }
+    try {
+      const path = SPORT_CONFIG[g.sport]?.path || "basketball/mens-college-basketball";
+      const dateStr = g.gameDate ? g.gameDate.replace(/-/g, "") : "";
+      const res = await fetch(`${BACKEND}/scores?sport=${path}${dateStr ? `&dates=${dateStr}` : ""}`);
+      const data = await res.json();
+      const games = data.games || [];
+      let found = g.espnGameId ? games.find(x => x.id === g.espnGameId) : null;
+      if (!found) {
+        const tA = (g.teamA || "").toLowerCase(), tB = (g.teamB || "").toLowerCase();
+        found = games.find(x => {
+          const h = (x.homeTeam || "").toLowerCase(), aw = (x.awayTeam || "").toLowerCase();
+          return h.includes(tA) || h.includes(tB) || aw.includes(tA) || aw.includes(tB);
+        });
+      }
+      if (!found) { setBotStatus("Game not found on ESPN"); return; }
+
+      const sA = found.awayScore, sB = found.homeScore;
+      setScoreA(sA); setScoreB(sB);
+      const status = mapStatus(found.status);
+      setBotLive(status === "in progress" || status === "halftime");
+      setBotStatus(`${found.shortDetail || found.status} · Updated ${new Date().toLocaleTimeString()}`);
+
+      if (g.espnGameId) {
+        try {
+          const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${g.espnGameId}&sport=${path}`);
+          const pbpData = await pbpRes.json();
+          const tvPlays = (pbpData.plays || []).filter(p =>
+            (p.text || "").toLowerCase().includes("official tv timeout") &&
+            typeof p.homeScore === "number" && typeof p.awayScore === "number" &&
+            p.homeScore >= 0 && p.awayScore >= 0 &&
+            (p.period === 1 || p.period === 2) // only regulation halves
+          );
+
+          const freshResults = { ...gameRef.current.results };
+          const updatedResults = { ...freshResults };
+          let changed = false;
+
+          if (tvPlays.length > 0) {
+            const isAutopilot = !!(gameRef.current.options?.autopilot);
+            const slotMap = mapTvTimeoutsToSlots(tvPlays, gameRef.current.results);
+            Object.entries(slotMap).forEach(([slotId, play]) => {
+              if (updatedResults[slotId]?.locked) return;
+              const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
+              const digit = calcDigit(tvA, tvB);
+              const winner = gameRef.current.assignments?.[digit] || null;
+              // Autopilot: lock immediately. Manual: mark as pending for host to review
+              updatedResults[slotId] = { scoreA: tvA, scoreB: tvB, digit, winner, locked: isAutopilot, paid: false, pending: !isAutopilot };
+              changed = true;
+            });
+
+            const latest = tvPlays[tvPlays.length - 1];
+            const tvKey = `${latest.period}-${latest.clock}-${latest.awayScore}-${latest.homeScore}`;
+            if (tvKey !== lastNotified.current) {
+              lastNotified.current = tvKey;
+              const tvA = latest.awayScore ?? sA, tvB = latest.homeScore ?? sB;
+              const digit = calcDigit(tvA, tvB);
+              const winner = g.assignments[digit] || null;
+              const isAuto = !!(gameRef.current.options?.autopilot);
+              setScoreA(tvA); setScoreB(tvB);
+              setBotStatus(`📺 TV Timeout! Score: ${tvA}–${tvB} · Digit ${digit}${isAuto ? " · AUTO-LOCKED" : ""}`);
+              onToast(winner
+                ? `📺 TV Timeout! ${winner} wins — digit ${digit} (${tvA}–${tvB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                : `📺 TV Timeout! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
+              if (Notification.permission === "granted") {
+                new Notification("⏱ Official TV Timeout!", {
+                  body: winner ? `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${tvA} – ${tvB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
+                });
+              }
+            }
+          }
+
+          // Halftime slot — detect via ESPN status OR period 2 starting
+          const allPlays = pbpData.plays || [];
+          const period1Plays = allPlays.filter(p => p.period === 1);
+          const isHalftime = status === "halftime" || allPlays.some(p => p.period === 2);
+          if (period1Plays.length > 0 && isHalftime &&
+              !gameRef.current.results["h1_0"]?.locked && !updatedResults["h1_0"]?.locked) {
+            const lastP1 = period1Plays[period1Plays.length - 1];
+            if (lastP1.homeScore != null) {
+              const hA = lastP1.awayScore ?? sA, hB = lastP1.homeScore ?? sB;
+              const digit = calcDigit(hA, hB);
+              const winner = gameRef.current.assignments?.[digit] || null;
+              const isAuto = !!(gameRef.current.options?.autopilot);
+              updatedResults["h1_0"] = { scoreA: hA, scoreB: hB, digit, winner, locked: isAuto, paid: false, pending: !isAuto };
+              changed = true;
+              const halfKey = `half-${hA}-${hB}`;
+              if (halfKey !== lastNotified.current) {
+                lastNotified.current = halfKey;
+                onToast(winner
+                  ? `⏸ Halftime! ${winner} wins — digit ${digit} (${hA}–${hB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                  : `⏸ Halftime! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
+                if (Notification.permission === "granted") {
+                  new Notification("⏸ Halftime!", {
+                    body: winner ? `${g.teamA} ${hA} – ${hB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${hA} – ${hB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
+                  });
+                }
+              }
+            }
+          }
+
+          // Final slot
+          if (status === "final" && !gameRef.current.results["h2_0"]?.locked && !updatedResults["h2_0"]?.locked) {
+            const digit = calcDigit(sA, sB);
+            const winner = gameRef.current.assignments?.[digit] || null;
+            const isAuto = !!(gameRef.current.options?.autopilot);
+            updatedResults["h2_0"] = { scoreA: sA, scoreB: sB, digit, winner, locked: isAuto, paid: false, pending: !isAuto };
+            changed = true;
+            const finalKey = `final-${sA}-${sB}`;
+            if (finalKey !== lastNotified.current) {
+              lastNotified.current = finalKey;
+              onToast(winner
+                ? `🏁 Final! ${winner} wins — digit ${digit} (${sA}–${sB})${isAuto ? " 🔒 Auto-locked" : " — tap Lock to confirm"}`
+                : `🏁 Final! Digit ${digit} — no player${isAuto ? " 🔒 Auto-locked" : ""}`);
+              if (Notification.permission === "granted") {
+                new Notification("🏁 Game Final!", {
+                  body: winner ? `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit}  ·  ${winner} wins` : `${g.teamA} ${sA} – ${sB} ${g.teamB}  ·  Digit ${digit} — unassigned`,
+                });
+              }
+            }
+          }
+
+          if (changed) onUpdate({ results: updatedResults });
+        } catch { /* pbp failed silently */ }
+      }
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (botRunning) timerRef.current = setTimeout(fetchScores, getPollingInterval(status));
+    } catch {
+      setBotStatus("Fetch failed — retrying");
+      if (botRunning) timerRef.current = setTimeout(fetchScores, 30000);
+    }
+  }, [botRunning, onUpdate, onToast]); // eslint-disable-line
+
+  useEffect(() => {
+    if (botRunning) fetchScores();
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [botRunning]); // eslint-disable-line
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const botProps = { botRunning, setBotRunning, botStatus, setBotStatus, botLive, scoreA, setScoreA, scoreB, setScoreB, fetchScores, autopilot: !!(game.options?.autopilot), setAutopilot: (val) => onUpdate({ options: { ...(game.options || {}), autopilot: val } }) };
+
+  const innerTabs = [
+    { id: "setup",   label: "Setup",   icon: "⚙" },
+    { id: "board",   label: "Board",   icon: "🎯" },
+    { id: "live",    label: "Live",    icon: "📡" },
+    { id: "payout",  label: "Payout",  icon: "💰" },
+    { id: "players", label: "Players", icon: "👥" },
+    { id: "share",   label: "Share",   icon: "🔗", badge: pendingChallengeCount },
+  ];
 
   return (
-    <div>
-      {/* Live Score Bot */}
-      <div className="live-score-card">
-        <div className="card-title">Live Score Bot</div>
-        <div className="bot-header">
-          {!botRunning
-            ? <button className="btn btn-primary btn-sm" onClick={startBot}>▶ Start Bot</button>
-            : <button className="btn btn-secondary btn-sm" onClick={stopBot}>■ Stop</button>}
-          {botRunning && <button className="btn btn-secondary btn-sm" onClick={fetchScores}>↻ Now</button>}
-          <div className={`bot-status ${botLive ? "live" : ""}`}>
-            {botLive && <span className="pulse" style={{ marginRight: 4 }}></span>}
-            {botStatus || (game.teamA ? `Tracking ${game.teamA} vs ${game.teamB}` : "Select a game in Setup")}
-          </div>
-        </div>
-        <div className="score-display" style={{ marginTop: 12 }}>
-          <div className="score-team">
-            <div className="score-team-name">{game.teamA || "Team A"}</div>
-            <div className="score-num">{scoreA}</div>
-          </div>
-          <div className="score-sep">–</div>
-          <div className="score-team">
-            <div className="score-team-name">{game.teamB || "Team B"}</div>
-            <div className="score-num">{scoreB}</div>
-          </div>
-        </div>
-        <div className="winner-banner">
-          <div className="wb-label">Live projected winner</div>
-          <div className="wb-eq">…{scoreA % 10} + …{scoreB % 10} = <strong style={{ color: "var(--court-bright)", fontSize: 14 }}>{liveDigit}</strong></div>
-          <div className="wb-name" style={{ fontSize: liveWinner ? 38 : 24, color: liveWinner ? "var(--win)" : "var(--text-dim)" }}>
-            {liveWinner ? `🏆 ${liveWinner}` : `Digit ${liveDigit} — unassigned`}
-          </div>
-        </div>
-      </div>
-
-      {/* Manual Lock */}
-      <div className="card">
-        <div className="card-title">Lock a Timeout</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-          {TIMEOUT_SLOTS.map(slot => {
-            const locked = game.results[slot.id]?.locked;
-            return (
-              <div key={slot.id}
-                className={`period-tab ${slot.id === activeSlotId ? "active" : ""} ${locked ? "locked" : ""}`}
-                onClick={() => !locked && setActiveSlotId(slot.id)}>
-                {slot.shortLabel} {locked && "✓"}
-              </div>
-            );
-          })}
-        </div>
-
-        {activeSlot && !game.results[activeSlot.id]?.locked && (
-          <>
-            <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-              Locking: <strong style={{ color: "var(--text)" }}>{activeSlot.label}</strong>
-            </div>
-            <div className="score-row">
-              <label>{makeAbbr(game.teamA) || "A"}</label>
-              <div className="score-stepper">
-                <button onClick={() => setScoreA(s => Math.max(0, s - 1))}>−</button>
-                <input type="number" value={scoreA} onChange={e => setScoreA(parseInt(e.target.value) || 0)} />
-                <button onClick={() => setScoreA(s => s + 1)}>+</button>
-              </div>
-            </div>
-            <div className="score-row">
-              <label>{makeAbbr(game.teamB) || "B"}</label>
-              <div className="score-stepper">
-                <button onClick={() => setScoreB(s => Math.max(0, s - 1))}>−</button>
-                <input type="number" value={scoreB} onChange={e => setScoreB(parseInt(e.target.value) || 0)} />
-                <button onClick={() => setScoreB(s => s + 1)}>+</button>
-              </div>
-            </div>
-
-            <div className="winner-banner" style={{ margin: "10px 0" }}>
-              <div className="wb-label">Winner if locked now</div>
-              <div className="wb-eq">…{scoreA % 10} + …{scoreB % 10} = <strong style={{ color: "var(--court-bright)", fontSize: 14 }}>{calcDigit(scoreA, scoreB)}</strong></div>
-              <div className="wb-name" style={{ fontSize: game.assignments[calcDigit(scoreA, scoreB)] ? 34 : 20, color: game.assignments[calcDigit(scoreA, scoreB)] ? "var(--win)" : "var(--text-dim)" }}>
-                {game.assignments[calcDigit(scoreA, scoreB)] ? `🏆 ${game.assignments[calcDigit(scoreA, scoreB)]}` : `Digit ${calcDigit(scoreA, scoreB)} — unassigned`}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button className="btn btn-win" style={{ flex: 1 }} onClick={() => lockSlot(activeSlot.id, scoreA, scoreB)}>
-                🔒 Lock {activeSlot.label}
-              </button>
-              <button className="btn btn-secondary" onClick={challenge} disabled={challenging}>
-                {challenging ? "⏳" : "⚠️ Challenge"}
-              </button>
-            </div>
-
-            {challengeResult && (
-              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, background: challengeResult.notYet ? "rgba(255,165,0,0.08)" : challengeResult.error ? "rgba(239,68,68,0.08)" : "rgba(51,102,204,0.08)", border: `1px solid ${challengeResult.notYet ? "orange" : challengeResult.error ? "var(--danger)" : "var(--court-dim)"}`, fontSize: 12 }}>
-                {challengeResult.error && !challengeResult.notYet ? (
-                  <div style={{ color: "var(--danger)" }}>{challengeResult.error}</div>
-                ) : challengeResult.notYet ? (
-                  <div style={{ color: "orange" }}>⏳ {challengeResult.error}</div>
-                ) : (
-                  <>
-                    <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--court-bright)" }}>⚠️ Official TV Timeout — ESPN Verified</div>
-                    <div style={{ color: "var(--text)" }}><strong>{game.teamA}</strong> {challengeResult.awayScore} – {challengeResult.homeScore} <strong>{game.teamB}</strong></div>
-                    {challengeResult.clock && <div style={{ color: "var(--text-dim)", marginTop: 3 }}>{challengeResult.period ? `Period ${challengeResult.period} · ` : ""}{challengeResult.clock}</div>}
-                    <div style={{ color: "var(--text-dim)", marginTop: 3, fontStyle: "italic" }}>{challengeResult.text}</div>
-                    <div style={{ marginTop: 6, color: "var(--win)", fontSize: 11 }}>✓ Scores auto-filled above</div>
-                  </>
-                )}
-              </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div className="inner-tabs">
+        {innerTabs.map(t => (
+          <div key={t.id} className={`inner-tab ${tab === t.id ? "active" : ""}`} onClick={() => handleTabChange(t.id)}>
+            <span style={{ fontSize: 13 }}>{t.icon}</span> {t.label}
+            {t.id === "live" && botRunning && <span style={{ marginLeft: 4, color: "var(--win)", fontSize: 9 }}>●</span>}
+            {t.badge > 0 && (
+              <span style={{
+                marginLeft: 5, background: "#e53935", color: "#fff",
+                borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                width: 16, height: 16, display: "inline-flex",
+                alignItems: "center", justifyContent: "center", lineHeight: 1,
+              }}>{t.badge}</span>
             )}
-          </>
-        )}
-        {activeSlot && game.results[activeSlot.id]?.locked && (
-          <div style={{ fontSize: 13, color: "var(--win)", textAlign: "center", padding: "10px 0" }}>
-            ✓ {activeSlot.label} is locked
           </div>
-        )}
+        ))}
+      </div>
+      <div className="game-content">
+        {tab === "setup"   && <TOSetupPanel  game={game} onUpdate={onUpdate} onDelete={onDelete} />}
+        {tab === "board"   && <TOBoardPanel  game={game} onUpdate={onUpdate} onToast={onToast} />}
+        {tab === "live"    && <TOLivePanel   game={game} onUpdate={onUpdate} onToast={onToast} botProps={botProps} />}
+        {tab === "payout"  && <TOPayoutPanel game={game} onUpdate={onUpdate} />}
+        {tab === "players" && <PlayersPanel />}
+        {tab === "share"   && <TOSharePanel  game={game} onUpdate={onUpdate} onToast={onToast} />}
       </div>
     </div>
   );
