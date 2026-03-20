@@ -66,14 +66,46 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
     return () => clearInterval(t);
   }, [game.shareCode, game.hostToken]);
 
-  const mapTvTimeoutsToSlots = (tvPlays) => {
-    const h1 = tvPlays.filter(p => p.period === 1);
-    const h2 = tvPlays.filter(p => p.period === 2);
-    const h1Slots = ["h1_16", "h1_12", "h1_8", "h1_4", "h1_0"];
-    const h2Slots = ["h2_16", "h2_12", "h2_8", "h2_4", "h2_0"];
+  // Convert "MM:SS" clock string to total seconds remaining
+  const clockToSeconds = (clock) => {
+    if (!clock) return -1;
+    const parts = clock.split(":").map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return -1;
+  };
+
+  // Map a TV timeout to the correct slot based on the game clock
+  // Basketball counts DOWN from 20:00. TV timeouts happen at the first dead ball
+  // UNDER each threshold: under 16, under 12, under 8, under 4
+  const getSlotForClock = (clock, period) => {
+    const secs = clockToSeconds(clock);
+    if (secs < 0) return null;
+    const prefix = period === 1 ? "h1" : "h2";
+    // secs remaining: under 16min = <= 960s, under 12 = <= 720s, etc.
+    if (secs <= 240) return `${prefix}_4`;   // under 4:00
+    if (secs <= 480) return `${prefix}_8`;   // under 8:00
+    if (secs <= 720) return `${prefix}_12`;  // under 12:00
+    if (secs <= 960) return `${prefix}_16`;  // under 16:00
+    return null; // above 16:00 - shouldn't be a TV timeout
+  };
+
+  const mapTvTimeoutsToSlots = (tvPlays, lockedResults = {}) => {
     const mapped = {};
-    h1.forEach((p, i) => { if (i < h1Slots.length) mapped[h1Slots[i]] = p; });
-    h2.forEach((p, i) => { if (i < h2Slots.length) mapped[h2Slots[i]] = p; });
+    // Sort by period then by clock descending (highest clock = earliest in game)
+    const sorted = [...tvPlays].sort((a, b) => {
+      if (a.period !== b.period) return a.period - b.period;
+      return clockToSeconds(b.clock) - clockToSeconds(a.clock); // descending = earliest first
+    });
+
+    // For each TV timeout, find the right slot by clock
+    // If a slot is already locked, skip it — don't remap
+    for (const play of sorted) {
+      const slot = getSlotForClock(play.clock, play.period);
+      if (!slot) continue;
+      if (lockedResults[slot]?.locked) continue; // already locked by host
+      if (mapped[slot]) continue; // already mapped this slot
+      mapped[slot] = play;
+    }
     return mapped;
   };
 
@@ -109,7 +141,8 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
           const tvPlays = (pbpData.plays || []).filter(p =>
             (p.text || "").toLowerCase().includes("official tv timeout") &&
             typeof p.homeScore === "number" && typeof p.awayScore === "number" &&
-            p.homeScore >= 0 && p.awayScore >= 0
+            p.homeScore >= 0 && p.awayScore >= 0 &&
+            (p.period === 1 || p.period === 2) // only regulation halves
           );
 
           const freshResults = { ...gameRef.current.results };
@@ -117,7 +150,7 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
           let changed = false;
 
           if (tvPlays.length > 0) {
-            const slotMap = mapTvTimeoutsToSlots(tvPlays);
+            const slotMap = mapTvTimeoutsToSlots(tvPlays, gameRef.current.results);
             Object.entries(slotMap).forEach(([slotId, play]) => {
               if (updatedResults[slotId]?.locked) return;
               const tvA = play.awayScore ?? sA, tvB = play.homeScore ?? sB;
