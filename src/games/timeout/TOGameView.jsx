@@ -9,12 +9,6 @@ import TOSharePanel from "./TOSharePanel";
 
 export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
   const [tab, setTab] = useState("setup");
-  const handleTabChange = (newTab) => {
-    setTab(newTab);
-    if (newTab === "live" && botRunning) {
-      setTimeout(fetchScores, 100);
-    }
-  };
 
   // Bot state lives here so it persists when switching tabs
   const [botRunning, setBotRunning] = useState(false);
@@ -258,6 +252,14 @@ export default function TOGameView({ game, onUpdate, onToast, onDelete }) {
     if (botRunning) fetchScores();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [botRunning]); // eslint-disable-line
+
+  // handleTabChange defined here so fetchScores is in scope
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    if (newTab === "live" && botRunning) {
+      setTimeout(fetchScores, 100);
+    }
+  };
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
