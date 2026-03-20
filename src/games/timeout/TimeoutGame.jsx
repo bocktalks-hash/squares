@@ -199,12 +199,18 @@ export default function TimeoutGame({ onToast }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-      <div className="main-area">
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
         {games.map(game => (
           // Mount ALL games — use display:none for inactive so bots keep running
           <div
             key={game.id}
-            style={{ display: game.id === activeId ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}
+            style={{
+              display: game.id === activeId ? "flex" : "none",
+              flexDirection: "column",
+              height: "100%",
+              minHeight: 0,
+              overflow: "hidden",
+            }}
           >
             <BotRunner
               game={game}
