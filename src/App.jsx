@@ -175,7 +175,6 @@ function MainApp({ showTourOnMount }) {
     setCloudUserId(syncUser.id);
     pullFromCloud(syncUser.id).then(() => {
       setStoredGames(getStoredGames());
-      markInitialized(); // enable auto-push now that initial load is done
     });
     // Periodic safety-net push every 2 minutes
     const interval = setInterval(() => pushToCloud(syncUser.id), 120000);
