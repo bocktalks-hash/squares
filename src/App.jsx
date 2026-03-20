@@ -13,7 +13,7 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { loadRoster, saveRoster, pushToCloud, pullFromCloud } from "./shared/storage";
+import { loadRoster, saveRoster, pushToCloud, pullFromCloud, setCloudUserId } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -168,29 +168,19 @@ function MainApp({ showTourOnMount }) {
     }
   }, [showTourOnMount]);
 
-  // Pull from cloud when user signs in
+  // Set userId in storage module so saveState/saveTOState can push automatically
+  // Also pull from cloud on sign-in to restore games on any device
   useEffect(() => {
     if (!syncUser?.id) return;
-    pullFromCloud(syncUser.id).then(pulled => {
-      if (pulled) setStoredGames(getStoredGames());
-    });
-  }, [syncUser?.id]);
-
-  // Push to cloud every 60s and on storage change
-  useEffect(() => {
-    if (!syncUser?.id) return;
-    let pushTimer = null;
-    const onStorage = () => {
+    setCloudUserId(syncUser.id);
+    pullFromCloud(syncUser.id).then(() => {
       setStoredGames(getStoredGames());
-      clearTimeout(pushTimer);
-      pushTimer = setTimeout(() => pushToCloud(syncUser.id), 2000);
-    };
-    window.addEventListener("storage", onStorage);
-    const interval = setInterval(() => pushToCloud(syncUser.id), 60000);
+    });
+    // Periodic safety-net push every 2 minutes
+    const interval = setInterval(() => pushToCloud(syncUser.id), 120000);
     return () => {
-      window.removeEventListener("storage", onStorage);
       clearInterval(interval);
-      clearTimeout(pushTimer);
+      setCloudUserId(null);
     };
   }, [syncUser?.id]);
 
