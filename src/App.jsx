@@ -13,7 +13,7 @@ import LandingPage from "./LandingPage";
 import PrivacyPolicy from "./PrivacyPolicy";
 import TutorialTour, { shouldShowTour } from "./TutorialTour";
 import { STORAGE_KEY, TO_STORAGE_KEY } from "./shared/constants";
-import { loadRoster, saveRoster, pushToCloud, pullFromCloud, setCloudUserId } from "./shared/storage";
+import { loadRoster, saveRoster, pushToCloud, pullFromCloud, setCloudUserId, markInitialized } from "./shared/storage";
 import { useAuth, useUser, SignInButton, SignOutButton, UserButton } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -175,6 +175,7 @@ function MainApp({ showTourOnMount }) {
     setCloudUserId(syncUser.id);
     pullFromCloud(syncUser.id).then(() => {
       setStoredGames(getStoredGames());
+      markInitialized(); // enable auto-push now that initial load is done
     });
     // Periodic safety-net push every 2 minutes
     const interval = setInterval(() => pushToCloud(syncUser.id), 120000);
