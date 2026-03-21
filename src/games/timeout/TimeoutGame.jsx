@@ -19,14 +19,33 @@ function useGameBot(game, updateGame, onToast) {
   const gameRef       = useRef(game);
   useEffect(() => { gameRef.current = game; }, [game]);
 
-  const mapTvTimeoutsToSlots = (tvPlays) => {
-    const h1 = tvPlays.filter(p => p.period === 1);
-    const h2 = tvPlays.filter(p => p.period === 2);
-    const h1Slots = ["h1_16","h1_12","h1_8","h1_4","h1_0"];
-    const h2Slots = ["h2_16","h2_12","h2_8","h2_4","h2_0"];
+  const mapTvTimeoutsToSlots = (tvPlays, lockedResults = {}) => {
+    // Pure order-based: sort by clock descending (highest = earliest in half)
+    // 1st Official TV Timeout → 16-min slot
+    // 2nd Official TV Timeout → 12-min slot
+    // 3rd Official TV Timeout →  8-min slot
+    // 4th Official TV Timeout →  4-min slot
+    // No clock window matching — just chronological order
+    const clockToSecs = (clock) => {
+      if (!clock) return -1;
+      const parts = clock.split(":").map(Number);
+      return parts.length === 2 ? parts[0] * 60 + parts[1] : -1;
+    };
+    const h1Slots = ["h1_16", "h1_12", "h1_8", "h1_4"];
+    const h2Slots = ["h2_16", "h2_12", "h2_8", "h2_4"];
     const mapped = {};
-    h1.forEach((p, i) => { if (i < h1Slots.length) mapped[h1Slots[i]] = p; });
-    h2.forEach((p, i) => { if (i < h2Slots.length) mapped[h2Slots[i]] = p; });
+    for (const [half, slots] of [[1, h1Slots], [2, h2Slots]]) {
+      // Sort by clock descending — highest clock = earliest in half
+      const plays = tvPlays
+        .filter(p => p.period === half)
+        .sort((a, b) => clockToSecs(b.clock) - clockToSecs(a.clock));
+      plays.forEach((p, i) => {
+        if (i >= slots.length) return; // max 4 per half
+        const slotId = slots[i];
+        if (lockedResults[slotId]?.locked) return; // never overwrite locked
+        mapped[slotId] = p;
+      });
+    }
     return mapped;
   };
 
@@ -59,10 +78,17 @@ function useGameBot(game, updateGame, onToast) {
         try {
           const pbpRes = await fetch(`${BACKEND}/playbyplay?gameId=${g.espnGameId}&sport=${path}`);
           const pbpData = await pbpRes.json();
+          // Strict filter: only exact "Official TV Timeout" or "Official Media Timeout"
+          // Never pick up team timeouts or other stoppages
+          const isOfficialTVTimeout = (text) => {
+            const t = (text || "").toLowerCase().trim();
+            return t === "official tv timeout" || t === "official media timeout";
+          };
           const tvPlays = (pbpData.plays || []).filter(p =>
-            (p.text || "").toLowerCase().includes("official tv timeout") &&
+            isOfficialTVTimeout(p.text) &&
             typeof p.homeScore === "number" && typeof p.awayScore === "number" &&
-            p.homeScore >= 0 && p.awayScore >= 0
+            p.homeScore >= 0 && p.awayScore >= 0 &&
+            (p.period === 1 || p.period === 2) // regulation only
           );
 
           // Always read fresh results to avoid stale closure overwriting locked slots
@@ -71,7 +97,7 @@ function useGameBot(game, updateGame, onToast) {
           let changed = false;
 
           if (tvPlays.length > 0) {
-            const slotMap = mapTvTimeoutsToSlots(tvPlays);
+            const slotMap = mapTvTimeoutsToSlots(tvPlays, gameRef.current.results);
             Object.entries(slotMap).forEach(([slotId, play]) => {
               // NEVER overwrite a locked slot
               if (updatedResults[slotId]?.locked) return;
